@@ -120,18 +120,27 @@ bool connOpen(int sd){
 		printf("Connection error: %s (Errno:%d)\n",strerror(errno),errno);
 		printf("Server address: %s\n", token[1]);
 		printf("Port: %s\n", token[2]);
-		return 0;}
-	else {
+		return 0;
+	} else {
 		printf("Server connection accepted.\n");
-		//memcpy(requestBuff,"0xe3myftp0xA10000000C",12);
+		// memcpy(OPEN_CONN_REQUEST.protocol,"0xe3myftp0xA10000000C",12);
 		OPEN_CONN_REQUEST.protocol[0]= htons(0xe3);
 		strcat(OPEN_CONN_REQUEST.protocol,"myftp");
 		OPEN_CONN_REQUEST.type=htons(0xA1);
 		OPEN_CONN_REQUEST.status=htons(0);
 		OPEN_CONN_REQUEST.length=htons(12);
-
-		//read(OPEN_CONN_REQUEST, buffer, sizeof(struct message_s));
-		printf("Buffer: %d\n",(int)buffer);
+		
+		// read(OPEN_CONN_REQUEST, buffer, sizeof(struct message_s));
+		memcpy(buffer, &OPEN_CONN_REQUEST,sizeof(OPEN_CONN_REQUEST));
+		int length = sizeof(OPEN_CONN_REQUEST);
+		buffer[length] = '\0';
+		
+		int i;
+		for (i = 0; i < length; i++) {
+			printf("%02X ",(int)buffer[i]);
+		}
+		printf("\n");
+		
 		if((len=send(sd,(void *)&OPEN_CONN_REQUEST,sizeof(OPEN_CONN_REQUEST),0))<=0){
 			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
 			exit(0);
@@ -142,18 +151,19 @@ bool connOpen(int sd){
 			printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 			exit(0);
 		}*/
-		if(OPEN_CONN_REPLY.status == 1)
+		if(OPEN_CONN_REPLY.status == 1) {
 			isconn = 1;
+		}
 		
 		return 1;
-		}
+	}
 	free(inputString);
 }
 
 //send auth message to the server
 bool auth(int sd){
 	char *inputString = malloc(sizeof(char)*256);
-	FILE * fp;
+	FILE *fp;
 	char buffer[256]="";
 	printf("You are ready to login...\n");
 	fgets(inputString, 256, stdin);
@@ -162,10 +172,10 @@ bool auth(int sd){
 	
 	//empty && call tokenit
 	if (strcmp(inputString,"\n")==0) {
-            return 0;
-        } else {
-            cmdlenght=tokenit(inputString);
-        }
+        return 0;
+    } else {
+        cmdlenght=tokenit(inputString);
+    }
 
 	//input: exit
 	if (strcmp(token[0],"exit")==0){
@@ -208,11 +218,12 @@ bool auth(int sd){
 int main(){
 	int sd = socket(AF_INET, SOCK_STREAM, 0);
 	while(1){
-		if(!isconn)
+		if(!isconn) {
 			connOpen(sd);
-		else if(isconn && !isauth)
+		} else if(isconn && !isauth) {
 			auth(sd);
-}
+		}
+	}
 	close(sd);
 	return 0;
 }

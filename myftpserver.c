@@ -60,17 +60,29 @@ int main(int argc, char** argv){
 			printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 			exit(0);
 		}
-		memcpy(&OPEN_CONN_REQUEST,buff,sizeof(buff));
-
+		memcpy(&OPEN_CONN_REQUEST, buff, len);
+		
 		printf("len: %d\n",len);
         printf("AFTER RECV\n");
 		buff[len]='\0';
+		printf("buffer content:\n");
+		int i;
+		for (i = 0; i < len; i++) {
+			printf("%02X ",(int)buff[i]);
+		}
+		printf("\n");
+		
 		printf("RECEIVED INFO: ");
-		if(strlen(buff)!=0) printf("%d\n",OPEN_CONN_REQUEST.length);
+		if(strlen(buff)!=0) {
+			printf("length: %d\n",ntohs(OPEN_CONN_REQUEST.length));
+			printf("protocol: %s\n",OPEN_CONN_REQUEST.protocol);
+			printf("type: %d\n", ntohs(OPEN_CONN_REQUEST.type));
+			printf("status: %d\n", ntohs(OPEN_CONN_REQUEST.status));
+		}
 		if(strcmp("exit",buff)==0){
 			close(client_sd);
 			break;
-    }
+    	}
 	}
 	close(sd);
 	return 0;
