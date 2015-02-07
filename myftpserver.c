@@ -68,7 +68,7 @@ int main(int argc, char** argv){
 		printf("buffer content:\n");
 		int i;
 		for (i = 0; i < len; i++) {
-			printf("%02X ",(int)buff[i]);
+			printf("%02X ",(unsigned int)buff[i]);
 		}
 		printf("\n");
 		
@@ -76,9 +76,32 @@ int main(int argc, char** argv){
 		if(strlen(buff)!=0) {
 			printf("length: %d\n",ntohs(OPEN_CONN_REQUEST.length));
 			printf("protocol: %s\n",OPEN_CONN_REQUEST.protocol);
-			printf("type: %d\n", ntohs(OPEN_CONN_REQUEST.type));
-			printf("status: %d\n", ntohs(OPEN_CONN_REQUEST.status));
+			printf("type: %X\n", OPEN_CONN_REQUEST.type);
+			printf("status: %d\n", OPEN_CONN_REQUEST.status);
 		}
+		
+		// Start making reply
+		OPEN_CONN_REPLY.protocol[0]= htons(0xe3);
+		strcat(OPEN_CONN_REPLY.protocol,"myftp");
+		OPEN_CONN_REPLY.type=0xA2;
+		OPEN_CONN_REPLY.status=1;
+		OPEN_CONN_REPLY.length=htons(12);
+		
+		len = sizeof(OPEN_CONN_REPLY);
+		printf("Reply with data:\n");
+		memcpy(buff, &OPEN_CONN_REPLY,len);
+		for (i = 0; i < len; i++) {
+			printf("%02X ",(unsigned int)buff[i]);
+		}
+		printf("\n");
+		
+		if((len=send(client_sd,buff,len,0))<=0){
+			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+			exit(0);
+		}
+		
+		printf("just finish sending with size %d.\n", len);
+		
 		if(strcmp("exit",buff)==0){
 			close(client_sd);
 			break;

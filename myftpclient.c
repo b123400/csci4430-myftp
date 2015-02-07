@@ -126,8 +126,8 @@ bool connOpen(int sd){
 		// memcpy(OPEN_CONN_REQUEST.protocol,"0xe3myftp0xA10000000C",12);
 		OPEN_CONN_REQUEST.protocol[0]= htons(0xe3);
 		strcat(OPEN_CONN_REQUEST.protocol,"myftp");
-		OPEN_CONN_REQUEST.type=htons(0xA1);
-		OPEN_CONN_REQUEST.status=htons(0);
+		OPEN_CONN_REQUEST.type=0xA1;
+		OPEN_CONN_REQUEST.status=0;
 		OPEN_CONN_REQUEST.length=htons(12);
 		
 		// read(OPEN_CONN_REQUEST, buffer, sizeof(struct message_s));
@@ -146,11 +146,23 @@ bool connOpen(int sd){
 			exit(0);
 		}
 		printf("len: %d\n",len);
-		/*
-		if((len=recv(sd,(struct message_s *)&OPEN_CONN_REPLY,sizeof(OPEN_CONN_REPLY),0))<=0){
+		
+		if((len=recv(sd,buffer,sizeof(OPEN_CONN_REPLY),0))<0){
 			printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 			exit(0);
-		}*/
+		}
+		memcpy(&OPEN_CONN_REPLY, buffer, len);
+		printf("received reply of size %d,\nReceived data:", len);
+		for (i = 0; i < len; i++) {
+			printf("%02X ",(int)buffer[i]);
+		}
+		printf("\n");
+		
+		printf("length: %d\n",ntohs(OPEN_CONN_REPLY.length));
+		printf("protocol: %s\n",OPEN_CONN_REPLY.protocol);
+		printf("type: %02X\n", OPEN_CONN_REPLY.type);
+		printf("status: %d\n", ntohs(OPEN_CONN_REPLY.status));
+		
 		if(OPEN_CONN_REPLY.status == 1) {
 			isconn = 1;
 		}
