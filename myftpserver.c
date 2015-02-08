@@ -9,6 +9,7 @@
 
 # define PORT 12345
 
+char *token[100];
 int isconn=0;
 int isauth=0;
 char payload[256];
@@ -21,6 +22,7 @@ unsigned char status; /* status (1 byte) */
 unsigned int length; /* length (header + payload) (4 bytes) */
 } __attribute__ ((packed));
 
+/*
 int acpw(char buffer[256], char authset[256]){
 	int i=0,j=0;
 	int same=0;
@@ -45,6 +47,19 @@ int acpw(char buffer[256], char authset[256]){
 		return 1;
 	else 
 		return 0;
+}*/
+
+int tokenit(char tmp[256]){
+    int i=0;
+    char *line = strtok(tmp, "\n");
+    
+    while (line != NULL){
+          i++;
+          token[i-1] = line;
+	  //printf("%s\n",token[i-1]);
+          line = strtok(NULL, "\n");
+    }
+    return i;
 }
 
 int check(struct message_s messages, unsigned char type, unsigned char status,unsigned int len){
@@ -65,6 +80,7 @@ int check(struct message_s messages, unsigned char type, unsigned char status,un
 	else return 1;
 }
 
+//step1: connhandle
 int connhandle(int client_sd){
 
 	struct message_s OPEN_CONN_REPLY;
@@ -132,6 +148,7 @@ int connhandle(int client_sd){
 return 0;
 }
 
+//step2: authandle
 int authandle(int client_sd){
 	FILE *fp;
 	struct message_s AUTH_REQUEST;
@@ -158,20 +175,38 @@ int authandle(int client_sd){
 	fp = fopen ("access.txt", "r");
 	fread(buffer, 256,1,fp);
 	printf("%s\n", buffer);
-	printf("sizeof(payload) = %d\n",strlen(payload));
-
+	payload[strlen(payload)]=0x0d;
+	printf("strlen(payload) = %d\n",strlen(payload));
+	
+	
 	strcpy(AUTH_REPLY.protocol, "\xe3myftp");
 	AUTH_REPLY.type = 0xA4;
 	AUTH_REPLY.length = htons(12);
-	if (acpw(buffer, payload)==1){
+	
+	int name_len=tokenit(buffer);
+	//for(i=0;i<strlen(token[0]);i++)
+	//	printf("token: %02x\n", token[0][i]);
+
+	for(i=0;i<name_len;i++){
+	
+	printf("strlen of token: %d\n", strlen(token[i]));
+	if (strcmp(token[i], payload) == 0){
 		AUTH_REPLY.status = 1;
 		printf("Your input is right!\n");
 		isauth=1;
-	} else {AUTH_REPLY.status = 0;}
-		
+		break;
+	} else {
+		printf("difference: %d\n", strcmp(token[i], payload));
+		AUTH_REPLY.status = 0;}}
+	
 	if((len=send(client_sd,(void *)&AUTH_REPLY,12,0))<=0){
 		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
 		exit(0);
+	}
+	if (AUTH_REPLY.status != 1){
+		isconn=0;
+		close(client_sd);
+		client_sd=0;
 	}
 	
 //close(fp); // dont know why not work to close fp!!!
@@ -179,8 +214,9 @@ return 0;
 }
 
 int main(int argc, char** argv){
+
 	int sd=socket(AF_INET,SOCK_STREAM,0);
-	int client_sd;
+	int client_sd=0;
 	int len;
 	int buff[100];
 	struct sockaddr_in server_addr;
@@ -204,17 +240,23 @@ int main(int argc, char** argv){
 		printf("accept erro: %s (Errno:%d)\n",strerror(errno),errno);
 		exit(0);
 	}*/
-    printf("BEFORE ACCEPT\n");
-	if((client_sd=accept(sd,(struct sockaddr *) &client_addr,&addr_len))<0){
-		printf("accept erro: %s (Errno:%d)\n",strerror(errno),errno);
-		exit(0);
-	}else{
-        printf("receive connection from %d\n",inet_ntoa(client_addr.sin_addr.s_addr));
-    }
-    printf("AFTER ACCEPT\n");
+
+
 
 //////////////////////////////////////////////
-	while(1){
+	while(1){   
+
+	//Don't know how to reset the client_sd
+		if(client_sd==0){
+	printf("BEFORE ACCEPT\n");
+		if((client_sd=accept(sd,(struct sockaddr *) &client_addr,&addr_len))<0){
+			printf("accept erro: %s (Errno:%d)\n",strerror(errno),errno);
+			exit(0);
+		}else{
+       			printf("receive connection from %d\n",inet_ntoa(client_addr.sin_addr.s_addr));
+  	 }
+  	printf("AFTER ACCEPT\n");}
+	
 		if(isconn!=1){ connhandle(client_sd); }
 		else if (isauth!=1){ authandle(client_sd); }
 		else {  printf("You can send/upload/ls file...\n");
