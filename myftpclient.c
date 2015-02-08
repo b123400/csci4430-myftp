@@ -31,7 +31,6 @@ char *token[100];
 char addr[100];
 uint16_t PORT;
 int cmdlenght;
-struct sockaddr_in server_addr;
 
 
 //separate the cmd (return the number of arguments)
@@ -56,6 +55,7 @@ bool connOpen(int sd){
 	char *inputString = malloc(sizeof(char)*256);
 	struct message_s OPEN_CONN_REPLY;
 	struct message_s OPEN_CONN_REQUEST;
+	struct sockaddr_in server_addr;
 	fgets(inputString, 256, stdin);
 	unsigned char *buffer;
 	buffer=(unsigned char *)malloc(sizeof(unsigned char) * MAX);
@@ -198,7 +198,7 @@ bool auth(int sd){
 	
 	for(i=0;i<strlen(authset);i++)
 		buffer[12+i]=authset[i];
-	
+	buffer[12+i] = 0x00; // the last char is 0, null terminated
 	if((len=send(sd,buffer,12+strlen(authset)+1,0))<=0){
 		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
 			exit(0);
@@ -214,12 +214,15 @@ bool auth(int sd){
 		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 		exit(0);
 	}
-	if (AUTH_REPLY.status==1) { isauth = 1;}
-	else {
+	if (AUTH_REPLY.status==1) {
+		isauth = 1;
+		printf("Logged in\n");
+	} else {
 		isconn=0;
+		isauth=0;
 		close(sd);
-		sd=0;
-		}
+		printf("Login failed.\n");
+	}
 		
 	free(inputString); 
 }
@@ -233,6 +236,10 @@ int main(){
 			connOpen(sd);
 		} else if(isconn && !isauth) {
 			auth(sd);
+			if (!isauth) {
+				// failed, reset sd
+				sd = 0;
+			}
 		} else break;
 	}
 	close(sd);

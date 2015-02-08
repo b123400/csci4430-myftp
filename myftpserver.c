@@ -10,9 +10,7 @@
 # define PORT 12345
 
 char *token[100];
-int isconn=0;
-int isauth=0;
-char payload[256];
+//char payload[256];
 
 //structure
 struct message_s {
@@ -65,7 +63,7 @@ int tokenit(char tmp[256]){
 int check(struct message_s messages, unsigned char type, unsigned char status,unsigned int len){
 
 	printf("server.protocol: %s,%s\n", messages.protocol,"\xe3myftp");
-	printf("tpye?%d,%d\n", messages.type,type );
+	printf("type?%d,%d\n", messages.type,type );
 	printf("status?%d,%d\n", messages.status,status );
 	printf("len?:%d,%d\n",ntohs(messages.length), len);
 
@@ -89,34 +87,39 @@ int connhandle(int client_sd){
 	char buff[100]="";
 	int len;
 
-        printf("BEFORE RECV\n");
-		if((len=recv(client_sd,buff,sizeof(buff),0))<=0){
-			printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
-			exit(0);
-		}
-		memcpy(&OPEN_CONN_REQUEST, buff, 12);
+    printf("BEFORE RECV\n");
+	if((len=recv(client_sd,buff,sizeof(buff),0))<=0){
+		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+		exit(0);
+	}
+	memcpy(&OPEN_CONN_REQUEST, buff, 12);
 
-		printf("len: %d\n",len);
-        printf("AFTER RECV\n");
-		buff[len]='\0';
-		printf("buffer content:\n");
+	printf("len: %d\n",len);
+    printf("AFTER RECV\n");
+	buff[len]='\0';
+	printf("buffer content:\n");
 
-		int i;
-		for (i = 0; i < len; i++) {
-			printf("%02X ",(unsigned int)buff[i]);
-		}
-		printf("\n");
-		
-		printf("RECEIVED INFO: ");
-		if(strlen(buff)!=0) {
-			printf("length: %d\n",ntohs(OPEN_CONN_REQUEST.length));
-			printf("protocol: %s\n",OPEN_CONN_REQUEST.protocol);
-			printf("type: %X\n", OPEN_CONN_REQUEST.type);
-			printf("status: %d\n", OPEN_CONN_REQUEST.status);
-		}
-		
-		// Start making reply
-		if(check(OPEN_CONN_REQUEST, 0xA1,0,12)){
+	int i;
+	for (i = 0; i < len; i++) {
+		printf("%02X ",(unsigned int)buff[i]);
+	}
+	printf("\n");
+	
+	printf("RECEIVED INFO: ");
+	if(strlen(buff)!=0) {
+		printf("length: %d\n",ntohs(OPEN_CONN_REQUEST.length));
+		printf("protocol: %s\n",OPEN_CONN_REQUEST.protocol);
+		printf("type: %X\n", OPEN_CONN_REQUEST.type);
+		printf("status: %d\n", OPEN_CONN_REQUEST.status);
+	}
+	
+	if(strcmp("exit",buff)==0){
+		close(client_sd);
+		return 0;
+	}
+	
+	// Start making reply
+	if(check(OPEN_CONN_REQUEST, 0xA1,0,12)){
 
 		strcpy(OPEN_CONN_REPLY.protocol,"\xe3myftp");
 		OPEN_CONN_REPLY.type=0xA2;
@@ -126,7 +129,7 @@ int connhandle(int client_sd){
 		len = sizeof(OPEN_CONN_REPLY);
 		printf("Reply with data:\n");
 		memcpy(buff, &OPEN_CONN_REPLY,len);
-
+	
 		for (i = 0; i < len; i++) {
 			printf("%02X ",(unsigned int)buff[i]);
 		}
@@ -136,16 +139,11 @@ int connhandle(int client_sd){
 			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
 			exit(0);
 		}
-		
+	
 		printf("just finish sending with size %d.\n", len);
-		isconn=1;
-		if(strcmp("exit",buff)==0){
-			close(client_sd);
-			return 0;
-		
-    	}
-}
-return 0;
+		return 1;
+	}
+	return 0;
 }
 
 //step2: authandle
@@ -157,6 +155,7 @@ int authandle(int client_sd){
 	int i,len;
 	char payload[256]="";
 	char buffer[256]="";
+	int isauth = 0; // this is local, every client has one
 	printf("BEFORE login\n");
 
 	if((len=recv(client_sd,buff,sizeof(buff),0))<=0){
@@ -175,9 +174,7 @@ int authandle(int client_sd){
 	fp = fopen ("access.txt", "r");
 	fread(buffer, 256,1,fp);
 	printf("%s\n", buffer);
-	payload[strlen(payload)]=0x0d;
 	printf("strlen(payload) = %d\n",strlen(payload));
-	
 	
 	strcpy(AUTH_REPLY.protocol, "\xe3myftp");
 	AUTH_REPLY.type = 0xA4;
@@ -189,34 +186,30 @@ int authandle(int client_sd){
 
 	for(i=0;i<name_len;i++){
 	
-	printf("strlen of token: %d\n", strlen(token[i]));
-	if (strcmp(token[i], payload) == 0){
-		AUTH_REPLY.status = 1;
-		printf("Your input is right!\n");
-		isauth=1;
-		break;
-	} else {
-		printf("difference: %d\n", strcmp(token[i], payload));
-		AUTH_REPLY.status = 0;}}
+		printf("strlen of token: %d\n", strlen(token[i]));
+		if (strcmp(token[i], payload) == 0){
+			AUTH_REPLY.status = 1;
+			printf("Your input is right!\n");
+			isauth=1;
+			break;
+		} else {
+			printf("difference: %d\n", strcmp(token[i], payload));
+			AUTH_REPLY.status = 0;
+		}
+	}
 	
 	if((len=send(client_sd,(void *)&AUTH_REPLY,12,0))<=0){
 		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
 		exit(0);
 	}
-	if (AUTH_REPLY.status != 1){
-		isconn=0;
-		close(client_sd);
-		client_sd=0;
-	}
 	
-//close(fp); // dont know why not work to close fp!!!
-return 0;
+	//close(fp); // dont know why not work to close fp!!!
+	return isauth;
 }
 
 int main(int argc, char** argv){
 
 	int sd=socket(AF_INET,SOCK_STREAM,0);
-	int client_sd=0;
 	int len;
 	int buff[100];
 	struct sockaddr_in server_addr;
@@ -245,26 +238,51 @@ int main(int argc, char** argv){
 
 //////////////////////////////////////////////
 	while(1){   
-
-	//Don't know how to reset the client_sd
-		if(client_sd==0){
-	printf("BEFORE ACCEPT\n");
+		// this loop is for the main thread of accept new client
+		// Create a client for this new client
+		// sub-threads shouldn't reach here.
+		int client_sd=0;
+		int isconn=0;
+		int isauth=0;
+		printf("BEFORE ACCEPT\n");
 		if((client_sd=accept(sd,(struct sockaddr *) &client_addr,&addr_len))<0){
 			printf("accept erro: %s (Errno:%d)\n",strerror(errno),errno);
 			exit(0);
 		}else{
-       			printf("receive connection from %d\n",inet_ntoa(client_addr.sin_addr.s_addr));
-  	 }
-  	printf("AFTER ACCEPT\n");}
-	
-		if(isconn!=1){ connhandle(client_sd); }
-		else if (isauth!=1){ authandle(client_sd); }
-		else {  printf("You can send/upload/ls file...\n");
-			printf("logouting...\n");
-			close(client_sd);
-			break; }
-}
-
+      		printf("receive connection from %d\n",inet_ntoa(client_addr.sin_addr.s_addr));
+   		}
+  		printf("AFTER ACCEPT\n");
+		
+		// probably something like this, for multiple threading
+		// if (run in new thread) {
+		while(1) {
+			// this loop is for each client
+			if(isconn!=1){
+				isconn = connhandle(client_sd);
+			} else if (isauth!=1){
+				isauth = authandle(client_sd);
+				if (!isauth) {
+					// user entered the wrong password
+					close(client_sd);
+					// by breaking, this thread ends.
+					break;
+				}
+			} else {
+				printf("You can send/upload/ls file...\n");
+				printf("logouting...\n");
+				// some more handler for other commands
+				close(client_sd);
+				break;
+			}
+		}
+		// break, because this thread is for client,
+		// it shouldn't do anything more than handling this client
+		// if we don't break here, this thread will accept other client.
+		//	break;
+		//} else {
+		//	do nothing, this is the main thread
+		//}
+	}
 	close(sd);
 	return 0;
 }
