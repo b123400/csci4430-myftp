@@ -52,6 +52,7 @@ int tokenit(char tmp[256]){
 
 //flow1: connection
 bool connOpen(int sd){
+
 	char *inputString = malloc(sizeof(char)*256);
 	struct message_s OPEN_CONN_REPLY;
 	struct message_s OPEN_CONN_REQUEST;
@@ -129,6 +130,7 @@ bool connOpen(int sd){
 			printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 			exit(0);
 		}
+
 		memcpy(&OPEN_CONN_REPLY, buffer, len);
 		printf("received reply of size %d,\nReceived data:", len);
 		for (i = 0; i < len; i++) {
@@ -145,7 +147,7 @@ bool connOpen(int sd){
 			isconn = 1;
 		}
 		
-		return 1;
+		return 0;
 	}
 	free(inputString);
 }
@@ -213,18 +215,25 @@ bool auth(int sd){
 		exit(0);
 	}
 	if (AUTH_REPLY.status==1) { isauth = 1;}
+	else {
+		isconn=0;
+		close(sd);
+		sd=0;
+		}
 		
 	free(inputString); 
 }
 
 int main(){
-	int sd = socket(AF_INET, SOCK_STREAM, 0);
+	int sd = 0;
 	while(1){
 		if(!isconn) {
+			if(sd==0)
+				sd = socket(AF_INET, SOCK_STREAM, 0);
 			connOpen(sd);
 		} else if(isconn && !isauth) {
 			auth(sd);
-		} else exit(0);
+		} else break;
 	}
 	close(sd);
 	return 0;
