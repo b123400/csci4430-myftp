@@ -57,16 +57,15 @@ bool connOpen(int sd){
 	struct message_s OPEN_CONN_REQUEST;
 	struct sockaddr_in server_addr;
 	fgets(inputString, 256, stdin);
-	unsigned char *buffer;
-	buffer=(unsigned char *)malloc(sizeof(unsigned char) * MAX);
+	char buffer[1024];
 	int len;
 	
 	//empty && call tokenit
 	if (strcmp(inputString,"\n")==0) {
-            return 0;
-        } else {
-            cmdlenght=tokenit(inputString);
-        }
+        return 0;
+    } else {
+        cmdlenght=tokenit(inputString);
+    }
 
 	//input: exit
 	if (strcmp(token[0],"exit")==0){
@@ -227,6 +226,53 @@ bool auth(int sd){
 	free(inputString); 
 }
 
+bool listFiles(int sd){
+	struct message_s LIST_REQUEST;
+	struct message_s LIST_REPLY;
+	char buffer[4096];
+	
+	strcpy(LIST_REQUEST.protocol,"\xe3myftp");
+	LIST_REQUEST.type=0xA5;
+	LIST_REQUEST.status=0;
+	LIST_REQUEST.length=htons(12);
+	
+	memcpy(buffer, &LIST_REQUEST,sizeof(LIST_REQUEST));
+	int length = sizeof(LIST_REQUEST);
+	buffer[length] = '\0';
+	
+	printf("sending list request:\n");
+	int i;
+	for (i = 0; i < length; i++) {
+		printf("%02X ",(int)buffer[i]);
+	}
+	printf("\n");
+	
+	int len;
+	if((len=send(sd,(void *)&LIST_REQUEST,sizeof(LIST_REQUEST),0))<=0){
+		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
+	}
+	
+	if((len=recv(sd,buffer,sizeof(buffer),0))<0){
+		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+		exit(0);
+	}
+
+	printf("received reply of size %d,\nReceived data:", len);
+	// for (i = 0; i < len; i++) {
+	// 	printf("%02X ",(int)buffer[i]);
+	// }
+	// printf("\n");
+	
+	memcpy(&LIST_REPLY, buffer, 12);
+	printf("length: %d\n",ntohs(LIST_REPLY.length));
+	printf("protocol: %s\n",LIST_REPLY.protocol);
+	printf("type: %02X\n", LIST_REPLY.type);
+	printf("status: %d\n", ntohs(LIST_REPLY.status));
+	
+	printf("Files are: %s\n", &buffer[12]);
+}
+
 int main(){
 	int sd = 0;
 	while(1){
@@ -240,7 +286,15 @@ int main(){
 				// failed, reset sd
 				sd = 0;
 			}
-		} else break;
+		} else {
+			// connected and authed
+			char *inputString = malloc(sizeof(char)*256);
+			fgets(inputString, 256, stdin);
+			if (strcmp(token, "ls\n")) {
+				listFiles(sd);
+			}
+			free(inputString);
+		}
 	}
 	close(sd);
 	return 0;

@@ -6,6 +6,7 @@
 # include <sys/socket.h>
 # include <sys/types.h>
 # include <netinet/in.h>
+#include <dirent.h>
 
 # define PORT 12345
 
@@ -205,11 +206,59 @@ int authandle(int client_sd){
 	return isauth;
 }
 
+// step3 list files
+int listFiles(int client_sd) {
+	struct message_s LIST_REPLY;
+	char buff[256];
+	
+	int len = 0;
+	
+	DIR *dirp;
+	struct dirent *dp;
+
+	if ((dirp = opendir(".")) == NULL) {
+		perror("couldn't open '.'");
+		return;
+	}
+
+	do {
+		errno = 0;
+		if ((dp = readdir(dirp)) != NULL) {
+			strcpy(&buff[len+12], dp->d_name);
+			//printf("found %s\n", dp->d_name);
+			len += strlen(dp->d_name)+1;
+			strcpy(&buff[len+12-1], "\n");
+			//printf("len is now%d\n", len);
+		}
+	} while (dp != NULL);
+	closedir(dirp);
+	
+	strcpy(LIST_REPLY.protocol,"\xe3myftp");
+	LIST_REPLY.type=0xA6;
+	LIST_REPLY.status=0;
+	LIST_REPLY.length=htons(len+12);
+	
+	printf("Reply with data:\n");
+	memcpy(buff, &LIST_REPLY,12);
+	// int i;
+	// for (i = 0; i < len+12; i++) {
+	// 	printf("%02X ",(unsigned int)buff[i]);
+	// }
+	// printf("\n");
+	
+	if((len=send(client_sd,buff,len+12,0))<=0){
+		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
+	}
+	printf("sent length %d\n",len);
+	return 0;
+}
+
 int main(int argc, char** argv){
 
 	int sd=socket(AF_INET,SOCK_STREAM,0);
 	int len;
-	int buff[100];
+	char buff[100];
 	struct sockaddr_in server_addr;
 	memset(&server_addr,0,sizeof(server_addr));
 	server_addr.sin_family=AF_INET;
@@ -267,7 +316,29 @@ int main(int argc, char** argv){
 				}
 			} else {
 				printf("You can send/upload/ls file...\n");
-				printf("logouting...\n");
+				
+				char buff[100]="";
+				struct message_s request;
+				int len;
+				
+			    printf("BEFORE RECV\n");
+				if((len=recv(client_sd,buff,sizeof(buff),0))<=0){
+					printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+					break;
+				}
+				memcpy(&request, buff, 12);
+				printf("received request\n");
+				int i;
+				for (i = 0; i < len; i++) {
+					printf("%02X ",(unsigned int)buff[i]);
+				}
+				printf("\n");
+				if (request.type == 0xA5) {
+					// this is a list request
+					listFiles(client_sd);
+					continue;
+				}
+				// printf("logouting...\n");
 				// some more handler for other commands
 				close(client_sd);
 				break;
