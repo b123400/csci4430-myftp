@@ -9,9 +9,6 @@
 
 # define PORT 12345
 
-char *token[100];
-//char payload[256];
-
 //structure
 struct message_s {
 unsigned char protocol[6]; /* protocol magic number (6 bytes) */
@@ -47,13 +44,13 @@ int acpw(char buffer[256], char authset[256]){
 		return 0;
 }*/
 
-int tokenit(char tmp[256]){
+int tokenit(char tmp[256], char **output){
     int i=0;
     char *line = strtok(tmp, "\n");
     
     while (line != NULL){
           i++;
-          token[i-1] = line;
+          output[i-1] = line;
 	  //printf("%s\n",token[i-1]);
           line = strtok(NULL, "\n");
     }
@@ -180,7 +177,8 @@ int authandle(int client_sd){
 	AUTH_REPLY.type = 0xA4;
 	AUTH_REPLY.length = htons(12);
 	
-	int name_len=tokenit(buffer);
+	char *token[256];
+	int name_len=tokenit(buffer, token);
 	//for(i=0;i<strlen(token[0]);i++)
 	//	printf("token: %02x\n", token[0][i]);
 
