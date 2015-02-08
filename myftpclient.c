@@ -13,6 +13,7 @@
 #include <netinet/in.h> // struct sockaddr_in
 #include <arpa/inet.h> //in_addr_t
 #define MAX 1000000
+
 //structure
 struct message_s {
 unsigned char protocol[6]; /* protocol magic number (6 bytes) */
@@ -47,31 +48,7 @@ int tokenit(char tmp[256]){
     return i;
 }
 
-int acpw(char buffer[256], char authset[256]){
-	int i=0,j=0;
-	int same=0;
-	while(i<strlen(buffer)){
-		if (j==strlen(authset))
-			break;
-		else if (buffer[i]==authset[j]){
-			j++;
-			i++;
-			printf("i: %d, j: %d\n",i,j);} 
-		else if (j==0) {
-			i++;
-			printf("i: %d, j: %d\n",i,j);}
-		else if (j>0) {
-			i=i-j+1;
-			j=0;
-			printf("i: %d, j: %d\n",i,j);
-		}
-	}
 
-	if(j==strlen(authset))
-		return 1;
-	else 
-		return 0;
-}
 
 //flow1: connection
 bool connOpen(int sd){
@@ -124,8 +101,8 @@ bool connOpen(int sd){
 	} else {
 		printf("Server connection accepted.\n");
 		// memcpy(OPEN_CONN_REQUEST.protocol,"0xe3myftp0xA10000000C",12);
-		OPEN_CONN_REQUEST.protocol[0]= htons(0xe3);
-		strcat(OPEN_CONN_REQUEST.protocol,"myftp");
+		//OPEN_CONN_REQUEST.protocol[0]=0xe3;
+		strcpy(OPEN_CONN_REQUEST.protocol,"\xe3myftp");
 		OPEN_CONN_REQUEST.type=0xA1;
 		OPEN_CONN_REQUEST.status=0;
 		OPEN_CONN_REQUEST.length=htons(12);
@@ -135,6 +112,7 @@ bool connOpen(int sd){
 		int length = sizeof(OPEN_CONN_REQUEST);
 		buffer[length] = '\0';
 		
+		printf("OPEN_CONN_REQUEST.protocol: %02x\n",OPEN_CONN_REQUEST.protocol[0]);
 		int i;
 		for (i = 0; i < length; i++) {
 			printf("%02X ",(int)buffer[i]);
@@ -172,15 +150,20 @@ bool connOpen(int sd){
 	free(inputString);
 }
 
-//send auth message to the server
+//flow2: send auth message to the server
 bool auth(int sd){
+
+	struct message_s AUTH_REQUEST;
+	struct message_s AUTH_REPLY;
+
+
 	char *inputString = malloc(sizeof(char)*256);
 	FILE *fp;
 	char buffer[256]="";
 	printf("You are ready to login...\n");
 	fgets(inputString, 256, stdin);
 	char authset[256]="";
-	int len;
+	int len, i;
 	
 	//empty && call tokenit
 	if (strcmp(inputString,"\n")==0) {
@@ -200,30 +183,37 @@ bool auth(int sd){
 		printf("pusage: auth [name] [password]\n");
 		return 0;
 	}
+	strcat(authset,token[1]);
+	strcat(authset," ");
+	strcat(authset,token[2]);
 
-
-	if((len=send(sd,inputString,strlen(inputString),0))<=0){
+	strcpy(AUTH_REQUEST.protocol,"\xe3myftp");
+	AUTH_REQUEST.type=0xA3;
+	AUTH_REQUEST.status=0;
+	AUTH_REQUEST.length=htons(12+strlen(authset)+1);
+	printf("AUTH_REQUEST.length:%d\n",ntohs(AUTH_REQUEST.length));
+	memcpy(buffer,&AUTH_REQUEST,sizeof(AUTH_REQUEST));
+	
+	for(i=0;i<strlen(authset);i++)
+		buffer[12+i]=authset[i];
+	
+	if((len=send(sd,buffer,12+strlen(authset)+1,0))<=0){
 		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
 			exit(0);
 	}
 	
-	//below should place on the server side
-	/*
-	strcat(authset,token[1]);
-	strcat(authset," ");
-	strcat(authset,token[2]);
-	//strcat(authset,"\n");
-	
-	printf("authset: %s\n",authset);
-	fp = fopen ("access.txt", "r");
-	fread(buffer, 256,1,fp);
-	printf("%s\n", buffer);
-	printf("sizeof(authset) = %d\n",strlen(authset));
+	printf("len have sent: %d\n", len);
+	printf("They are:");
+	for(i=0;i<len;i++)
+		printf("%02x ", buffer[i]);
+	printf("\n");
 
-	if(acpw(buffer, authset)==1)
-		printf("Your input is right!\n");
-	
-	close(fp);*/
+	if((len=recv(sd,&AUTH_REPLY,sizeof(AUTH_REPLY),0))<=0){
+		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+		exit(0);
+	}
+	if (AUTH_REPLY.status==1) { isauth = 1;}
+		
 	free(inputString); 
 }
 
@@ -234,7 +224,7 @@ int main(){
 			connOpen(sd);
 		} else if(isconn && !isauth) {
 			auth(sd);
-		}
+		} else exit(0);
 	}
 	close(sd);
 	return 0;
