@@ -216,7 +216,7 @@ int listFiles(int client_sd) {
 	DIR *dirp;
 	struct dirent *dp;
 
-	if ((dirp = opendir(".")) == NULL) {
+	if ((dirp = opendir("./filedir")) == NULL) {
 		perror("couldn't open '.'");
 		return;
 	}
