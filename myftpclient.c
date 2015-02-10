@@ -159,7 +159,6 @@ bool auth(int sd){
 
 
 	char *inputString = malloc(sizeof(char)*256);
-	FILE *fp;
 	char buffer[256]="";
 	printf("You are ready to login...\n");
 	fgets(inputString, 256, stdin);
@@ -193,10 +192,11 @@ bool auth(int sd){
 	AUTH_REQUEST.status=0;
 	AUTH_REQUEST.length=htons(12+strlen(authset)+1);
 	printf("AUTH_REQUEST.length:%d\n",ntohs(AUTH_REQUEST.length));
-	memcpy(buffer,&AUTH_REQUEST,sizeof(AUTH_REQUEST));
+	memcpy(buffer, &AUTH_REQUEST, sizeof(AUTH_REQUEST));
 	
 	for(i=0;i<strlen(authset);i++)
 		buffer[12+i]=authset[i];
+	
 	buffer[12+i] = 0x00; // the last char is 0, null terminated
 	if((len=send(sd,buffer,12+strlen(authset)+1,0))<=0){
 		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
@@ -226,6 +226,7 @@ bool auth(int sd){
 	free(inputString); 
 }
 
+//flow3: ls cmd
 bool listFiles(int sd){
 	struct message_s LIST_REQUEST;
 	struct message_s LIST_REPLY;
@@ -273,6 +274,81 @@ bool listFiles(int sd){
 	printf("Files are: %s\n", &buffer[12]);
 }
 
+// flow4: get cmd
+int getFile(int sd){
+	struct message_s GET_REQUEST;
+	struct message_s GET_REPLY;
+	struct message_s FILE_DATA;
+	char buffer[4096]="";
+	char filebuffer[4096]="";
+	int i=0;
+	FILE *fp;
+
+	strcpy(GET_REQUEST.protocol,"\xe3myftp");
+	GET_REQUEST.type=0xA7;
+	GET_REQUEST.status=0;
+	GET_REQUEST.length=htons(12+strlen(token[1])+1);
+	int length = sizeof(GET_REQUEST);
+	buffer[length] = '\0';
+
+	memcpy(buffer, &GET_REQUEST,sizeof(GET_REQUEST));
+	
+	for(i=0;i<strlen(token[1]);i++)
+		buffer[13+i]=token[1][i];
+
+	printf("sending get request:\n");
+
+	for (i = 0; i < (12+strlen(token[1])+1); i++) {
+		printf("%02X ",(int)buffer[i]);
+	}
+	printf("\n");
+
+	int len=0;
+	if((len=send(sd,buffer,12+strlen(token[1])+1,0))<=0){
+		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
+	}
+
+	if((len=recv(sd,&GET_REPLY,12,0))<0){
+		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+		exit(0);
+	}
+
+	
+	printf("length: %d\n",ntohs(GET_REPLY.length));
+	printf("protocol: %s\n",GET_REPLY.protocol);
+	printf("type: %02X\n", GET_REPLY.type);
+	printf("status: %d\n", GET_REPLY.status);
+
+	if (GET_REPLY.status==1 && GET_REPLY.type == 0xA8){ // should use check function later
+		
+		if((len=recv(sd,buffer,sizeof(buffer),0))<0){
+			printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+			exit(0);
+		}
+		memcpy(&FILE_DATA, buffer, 12);
+
+		printf("FD length: %d\n",ntohs(FILE_DATA.length));
+		printf("FD protocol: %s\n",FILE_DATA.protocol);
+		printf("FD type: %02X\n", FILE_DATA.type);
+		printf("FD status: %d\n", FILE_DATA.status);
+
+		if (FILE_DATA.type==0xFF){
+			fp = fopen ("newfile.txt", "w");
+
+			for(i=0;i<len-12;i++){
+				filebuffer[i]=buffer[12+i];
+				printf("%c",filebuffer[i]);
+			}
+
+			fwrite(filebuffer, 1, len-12, fp);
+			printf("File downloaded.\n");
+			fclose(fp);
+		}
+	} else 
+		printf("Download Fail!\n");
+}
+
 int main(){
 	int sd = 0;
 	while(1){
@@ -289,9 +365,29 @@ int main(){
 		} else {
 			// connected and authed
 			char *inputString = malloc(sizeof(char)*256);
+			int cmdlen=0;
 			fgets(inputString, 256, stdin);
-			if (strcmp(token, "ls\n")) {
+			cmdlen=tokenit(inputString);
+
+			if (strcmp(token[0], "ls")==0 && cmdlen==1) {
 				listFiles(sd);
+			} 
+			else if (strcmp(token[0], "get")==0 && cmdlen==2){
+				getFile(sd);
+				//printf("downloading...\n");
+			}
+			else if (strcmp(token[0], "put")==0 && cmdlen==2){
+				printf("uploading...\n");
+			}
+			else if (strcmp(token[0], "quit")==0 && cmdlen==1){
+				printf("quiting...\n");
+			}
+			else {
+				printf("pusage:\n");
+				printf("ls\n");
+				printf("get [filename]\n");
+				printf("put [filename]\n");
+				printf("quit\n");
 			}
 			free(inputString);
 		}
