@@ -261,7 +261,7 @@ int getFile(int client_sd, char filename[100]){
 	struct message_s FILE_DATA;
 	char buff[4096]="";
 	char filebuff[4096] = {'0xff'};
-	int filelen;
+	long int filelen;
 	int len = 0;
 	int i;
 	FILE *fp;
@@ -278,7 +278,8 @@ int getFile(int client_sd, char filename[100]){
 		
 	} else{
 		printf("This file does not exist!\n");
-		GET_REPLY.status=0;}
+		GET_REPLY.status=0;
+	}
 	
 	printf("fopen of %s, status: %d\n",filename, GET_REPLY.status);
 
@@ -292,12 +293,16 @@ int getFile(int client_sd, char filename[100]){
 	//filebuff > payload
 	if (GET_REPLY.status==0)
 		return 0;
+	
+	// go to end and find its size
+	fseek(fp, 0L, SEEK_END);
+	filelen = ftell(fp);
 	fseek(fp, 0, SEEK_SET);
 	
 	char *beforeGet = filebuff;
 	char *afterGet = fgets(filebuff,4096,fp);
 	
-	if (!afterGet && filebuff == beforeGet) {
+	if (filelen == 0 || (!afterGet && filebuff == beforeGet)) {
 		// empty file
 
 		strcpy(FILE_DATA.protocol,"\xe3myftp");
@@ -314,7 +319,6 @@ int getFile(int client_sd, char filename[100]){
 		
 	} else if (filebuff != NULL) {
 		puts(filebuff);
-		filelen=strlen(filebuff);
 
 		strcpy(FILE_DATA.protocol,"\xe3myftp");
 		FILE_DATA.type=0xFF;
