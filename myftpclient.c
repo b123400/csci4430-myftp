@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <netinet/in.h> // struct sockaddr_in
 #include <arpa/inet.h> //in_addr_t
+#include <fcntl.h>
 #define MAX 1000000
 
 //structure
@@ -350,6 +351,76 @@ int getFile(int sd){
 		printf("Download Fail!\n");
 }
 
+int putFile(int sd, char *filename) {
+	struct message_s PUT_REQUEST;
+	struct message_s PUT_REPLY;
+	struct message_s FILE_DATA;
+	char buffer[256];
+	int len = 0;
+	
+	int fd = 0;
+	if((fd = open(filename, O_RDONLY)) <= -1) {
+		printf("cannot read file");
+		return 0;
+	}
+	
+	int filenameLength = strlen(filename);
+	
+	strcpy(PUT_REQUEST.protocol,"\xe3myftp");
+	PUT_REQUEST.type=0xA9;
+	PUT_REQUEST.status=0;
+	PUT_REQUEST.length=htons(12+filenameLength+1);
+	
+	memcpy(buffer, &PUT_REQUEST, sizeof(PUT_REQUEST));
+	strcpy(&buffer[12], filename);
+	buffer[12+filenameLength] = 0x00;
+	
+	int i;
+	for (i = 0; i < (12+filenameLength+1); i++) {
+		printf("%02X ",(int)buffer[i]);
+	}
+	
+	if((len=send(sd,buffer,12+filenameLength+1,0))<=0){
+		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
+	}
+	printf("after put_request\n");
+	
+	if((len=recv(sd,buffer,sizeof(PUT_REPLY),0))<0){
+		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+		exit(0);
+	}
+	
+	printf("received put_reply\n");
+	
+	int filesize = lseek(fd, 0, SEEK_END);
+	lseek(fd, 0, SEEK_SET);
+	
+	strcpy(FILE_DATA.protocol,"\xe3myftp");
+	FILE_DATA.type=0xFF;
+	FILE_DATA.status=0;
+	FILE_DATA.length=htons(12+filesize);
+	
+	printf("send file header\n");
+	if((len=send(sd,&FILE_DATA,12,0))<=0){
+		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
+	}
+	
+	memcpy(buffer, &PUT_REQUEST, sizeof(PUT_REQUEST));
+	for (i = 0; i < 12; i++) {
+		printf("%02X ",(int)buffer[i]);
+	}
+	printf("\n");
+	
+	printf("uploading file size: %d\n", filesize);
+	if (sendfile(sd, fd, 0, filesize) == -1) {
+		printf("sending error: %s (Errno:%d)\n", strerror(errno),errno);
+		exit(0);
+	}
+	close(fd);
+}
+
 int main(){
 	int sd = 0;
 	while(1){
@@ -379,6 +450,7 @@ int main(){
 			}
 			else if (strcmp(token[0], "put")==0 && cmdlen==2){
 				printf("uploading...\n");
+				putFile(sd, token[1]);
 			}
 			else if (strcmp(token[0], "quit")==0 && cmdlen==1){
 				printf("quiting...\n");

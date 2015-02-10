@@ -342,6 +342,71 @@ int getFile(int client_sd, char filename[100]){
 	fclose(fp);
 }
 
+int putFile(int client_sd, char request[100]) {
+	struct message_s PUT_REPLY;
+	struct message_s FILE_DATA;
+	
+	int len = 0;
+	char *filename = malloc(sizeof(char)*100);
+	char buff[256];
+	
+	strcpy(filename, &request[12]);
+	printf("uploading: %s\n", filename);
+	
+	strcpy(PUT_REPLY.protocol,"\xe3myftp");
+	PUT_REPLY.type=0xAA;
+	PUT_REPLY.status=0;
+	PUT_REPLY.length=htons(12);
+	
+	if((len=send(client_sd,&PUT_REPLY,12,0))<=0){
+		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
+	}
+	
+	if((len=recv(client_sd,&FILE_DATA,12,0))<=0){
+		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+		exit(0);
+	}
+	
+	printf("received file header\n");
+	printf("length: %d\n",ntohs(FILE_DATA.length));
+	printf("protocol: %s\n",FILE_DATA.protocol);
+	printf("type: %X\n", FILE_DATA.type);
+	printf("status: %d\n", FILE_DATA.status);
+	
+	int filesize = ntohs(FILE_DATA.length) - 12;
+	
+	FILE *fp;
+	char *saveTo = basename(filename);
+	printf("saveTo %s \n", saveTo);
+	if((fp=fopen(saveTo, "w"))==NULL){
+		printf("open error: %s (Errno:%d)\n", strerror(errno),errno);
+		return 0;
+	}
+	
+	int totalsize = 0;
+	int buffsize = sizeof(buff) < filesize? sizeof(buff) : filesize;
+	
+	while (filesize > 0) {
+		printf("waiting for file\n");
+		len = recv(client_sd, buff, buffsize, 0);
+		printf("recved size: %d\n", len);
+		if (len<=0) {
+			printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+			return 0;
+		}
+		fwrite(buff, 1, len, fp);
+		totalsize += len;
+		if (totalsize >= filesize) {
+			break;
+		}
+	}
+	
+	fclose(fp);
+	printf("uploaded\n");
+	return 1;
+}
+
 int main(int argc, char** argv){
 
 	int sd=socket(AF_INET,SOCK_STREAM,0);
@@ -353,9 +418,9 @@ int main(int argc, char** argv){
 	server_addr.sin_addr.s_addr=htonl(INADDR_ANY);
 	server_addr.sin_port=htons(12345);
 
-	if(bind(sd,(struct sockaddr *) &server_addr,sizeof(server_addr))<0){
-		printf("bind error: %s (Errno:%d)\n",strerror(errno),errno);
-		exit(0);
+	while(bind(sd,(struct sockaddr *) &server_addr,sizeof(server_addr))<0){
+		//printf("bind error: %s (Errno:%d)\n",strerror(errno),errno);
+		//exit(0);
 	}
 
 	if(listen(sd,3)<0){
@@ -426,11 +491,16 @@ int main(int argc, char** argv){
 					listFiles(client_sd);
 					continue;
 				} else if (request.type == 0xA7) {
+					// get request
 					char filename[100]="";
 					for(i=0;i<ntohs(request.length)-13;i++)
 						filename[i]=buff[13+i];
 					printf("get %s\n", filename);
 					getFile(client_sd, filename);
+					continue;
+				} else if (request.type == 0xA9) {
+					// put request
+					putFile(client_sd, buff);
 					continue;
 				}
 				// printf("logouting...\n");
