@@ -332,9 +332,10 @@ int getFile(int sd){
 		printf("FD protocol: %s\n",FILE_DATA.protocol);
 		printf("FD type: %02X\n", FILE_DATA.type);
 		printf("FD status: %d\n", FILE_DATA.status);
-
+		
+		char *outputFilename = basename(token[1]);
 		if (FILE_DATA.type==0xFF){
-			fp = fopen ("newfile.txt", "w");
+			fp = fopen (outputFilename, "w");
 
 			for(i=0;i<len-12;i++){
 				filebuffer[i]=buffer[12+i];

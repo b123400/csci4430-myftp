@@ -171,7 +171,7 @@ int authandle(int client_sd){
 	fp = fopen ("access.txt", "r");
 	fread(buffer, 256,1,fp);
 	printf("%s\n", buffer);
-	payload[strlen(payload)]=0x0d;
+	payload[strlen(payload)]=0x00;
 	printf("strlen(payload) = %d\n",strlen(payload));
 	
 	strcpy(AUTH_REPLY.protocol, "\xe3myftp");
@@ -260,7 +260,7 @@ int getFile(int client_sd, char filename[100]){
 	struct message_s GET_REPLY;
 	struct message_s FILE_DATA;
 	char buff[4096]="";
-	char filebuff[4096]="";
+	char filebuff[4096] = {'0xff'};
 	int filelen;
 	int len = 0;
 	int i;
@@ -274,8 +274,9 @@ int getFile(int client_sd, char filename[100]){
 
 	if((fp=fopen(filename, "r"))!=NULL){
 		printf("This file exists!\n");
-		GET_REPLY.status=1;}
-	else{
+		GET_REPLY.status=1;
+		
+	} else{
 		printf("This file does not exist!\n");
 		GET_REPLY.status=0;}
 	
@@ -292,8 +293,26 @@ int getFile(int client_sd, char filename[100]){
 	if (GET_REPLY.status==0)
 		return 0;
 	fseek(fp, 0, SEEK_SET);
-	if ( fgets(filebuff,4096,fp)!=NULL){
+	
+	char *beforeGet = filebuff;
+	char *afterGet = fgets(filebuff,4096,fp);
+	
+	if (!afterGet && filebuff == beforeGet) {
+		// empty file
 
+		strcpy(FILE_DATA.protocol,"\xe3myftp");
+		FILE_DATA.type=0xFF;
+		FILE_DATA.status=0;
+		FILE_DATA.length=htons(12);
+		
+		memcpy(buff,&FILE_DATA,sizeof(FILE_DATA));
+		if((len=send(client_sd,buff,12,0))<=0){
+			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+			exit(0);
+		}
+		printf("after sending empty file");
+		
+	} else if (filebuff != NULL) {
 		puts(filebuff);
 		filelen=strlen(filebuff);
 
@@ -316,7 +335,7 @@ int getFile(int client_sd, char filename[100]){
 		printf("after FILE_DATA\n");
 	}
 
-fclose(fp);
+	fclose(fp);
 }
 
 int main(int argc, char** argv){
