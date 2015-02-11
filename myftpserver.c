@@ -6,7 +6,8 @@
 # include <sys/socket.h>
 # include <sys/types.h>
 # include <netinet/in.h>
-#include <dirent.h>
+# include <dirent.h>
+# include <pthread.h>
 
 # define PORT 12345
 
@@ -407,6 +408,68 @@ int putFile(int client_sd, char request[100]) {
 	return 1;
 }
 
+void *threadFunc(void *arg) {
+	int client_sd = (int)arg;
+	int isconn=0;
+	int isauth=0;
+	
+	while(1) {
+		// this loop is for each client
+		if(isconn!=1){
+			isconn = connhandle(client_sd);
+		} else if (isauth!=1){
+			isauth = authandle(client_sd);
+			if (!isauth) {
+				// user entered the wrong password
+				close(client_sd);
+				// by breaking, this thread ends.
+				break;
+			}
+		} else {
+			printf("You can send/upload/ls file...\n");
+			
+			char buff[100]="";
+			struct message_s request;
+			int len;
+			
+		    printf("BEFORE RECV\n");
+			if((len=recv(client_sd,buff,sizeof(buff),0))<=0){
+				printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+				break;
+			}
+			memcpy(&request, buff, 12);
+			printf("received request\n");
+			int i;
+			for (i = 0; i < len; i++) {
+				printf("%02X ",(unsigned int)buff[i]);
+			}
+			printf("\n");
+			if (request.type == 0xA5) {
+				// this is a list request
+				listFiles(client_sd);
+				continue;
+			} else if (request.type == 0xA7) {
+				// get request
+				char filename[100]="";
+				for(i=0;i<ntohs(request.length)-13;i++)
+					filename[i]=buff[13+i];
+				printf("get %s\n", filename);
+				getFile(client_sd, filename);
+				continue;
+			} else if (request.type == 0xA9) {
+				// put request
+				putFile(client_sd, buff);
+				continue;
+			}
+			// printf("logouting...\n");
+			// some more handler for other commands
+			close(client_sd);
+			break;
+		}
+	}
+	pthread_exit(NULL);
+}
+
 int main(int argc, char** argv){
 
 	int sd=socket(AF_INET,SOCK_STREAM,0);
@@ -418,9 +481,9 @@ int main(int argc, char** argv){
 	server_addr.sin_addr.s_addr=htonl(INADDR_ANY);
 	server_addr.sin_port=htons(12345);
 
-	while(bind(sd,(struct sockaddr *) &server_addr,sizeof(server_addr))<0){
-		//printf("bind error: %s (Errno:%d)\n",strerror(errno),errno);
-		//exit(0);
+	if(bind(sd,(struct sockaddr *) &server_addr,sizeof(server_addr))<0){
+		printf("bind error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
 	}
 
 	if(listen(sd,3)<0){
@@ -429,12 +492,6 @@ int main(int argc, char** argv){
 	}
 	struct sockaddr_in client_addr;
 	int addr_len=sizeof(client_addr);
-	/*if((client_sd=accept(sd,(struct sockaddr *) &client_addr,&addr_len))<0){
-		printf("accept erro: %s (Errno:%d)\n",strerror(errno),errno);
-		exit(0);
-	}*/
-
-
 
 //////////////////////////////////////////////
 	while(1){   
@@ -442,8 +499,6 @@ int main(int argc, char** argv){
 		// Create a client for this new client
 		// sub-threads shouldn't reach here.
 		int client_sd=0;
-		int isconn=0;
-		int isauth=0;
 		printf("BEFORE ACCEPT\n");
 		if((client_sd=accept(sd,(struct sockaddr *) &client_addr,&addr_len))<0){
 			printf("accept erro: %s (Errno:%d)\n",strerror(errno),errno);
@@ -452,70 +507,12 @@ int main(int argc, char** argv){
       		printf("receive connection from %d\n",inet_ntoa(client_addr.sin_addr.s_addr));
    		}
   		printf("AFTER ACCEPT\n");
-		
-		// probably something like this, for multiple threading
-		// if (run in new thread) {
-		while(1) {
-			// this loop is for each client
-			if(isconn!=1){
-				isconn = connhandle(client_sd);
-			} else if (isauth!=1){
-				isauth = authandle(client_sd);
-				if (!isauth) {
-					// user entered the wrong password
-					close(client_sd);
-					// by breaking, this thread ends.
-					break;
-				}
-			} else {
-				printf("You can send/upload/ls file...\n");
-				
-				char buff[100]="";
-				struct message_s request;
-				int len;
-				
-			    printf("BEFORE RECV\n");
-				if((len=recv(client_sd,buff,sizeof(buff),0))<=0){
-					printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
-					break;
-				}
-				memcpy(&request, buff, 12);
-				printf("received request\n");
-				int i;
-				for (i = 0; i < len; i++) {
-					printf("%02X ",(unsigned int)buff[i]);
-				}
-				printf("\n");
-				if (request.type == 0xA5) {
-					// this is a list request
-					listFiles(client_sd);
-					continue;
-				} else if (request.type == 0xA7) {
-					// get request
-					char filename[100]="";
-					for(i=0;i<ntohs(request.length)-13;i++)
-						filename[i]=buff[13+i];
-					printf("get %s\n", filename);
-					getFile(client_sd, filename);
-					continue;
-				} else if (request.type == 0xA9) {
-					// put request
-					putFile(client_sd, buff);
-					continue;
-				}
-				// printf("logouting...\n");
-				// some more handler for other commands
-				close(client_sd);
-				break;
-			}
-		}
-		// break, because this thread is for client,
-		// it shouldn't do anything more than handling this client
-		// if we don't break here, this thread will accept other client.
-		//	break;
-		//} else {
-		//	do nothing, this is the main thread
-		//}
+  		
+		pthread_t tid;
+		pthread_attr_t attr;
+		pthread_attr_init(&attr);
+		pthread_attr_setdetachstate(&attr,PTHREAD_CREATE_DETACHED);
+		pthread_create(&tid, &attr, threadFunc, client_sd);
 	}
 	close(sd);
 	return 0;

@@ -153,6 +153,9 @@ bool connOpen(int sd){
 }
 
 //flow2: send auth message to the server
+// return 1 = login success
+// return 0 = login canceled(entering wrong command)
+// return -1 = login failed(wrong password)
 bool auth(int sd){
 
 	struct message_s AUTH_REQUEST;
@@ -224,7 +227,12 @@ bool auth(int sd){
 		printf("Login failed.\n");
 	}
 		
-	free(inputString); 
+	free(inputString);
+	if (AUTH_REPLY.status==1) {
+		return 1;
+	} else {
+		return -1;
+	}
 }
 
 //flow3: ls cmd
@@ -430,7 +438,7 @@ int main(){
 			connOpen(sd);
 		} else if(isconn && !isauth) {
 			auth(sd);
-			if (!isauth) {
+			if (isauth==-1) {
 				// failed, reset sd
 				sd = 0;
 			}
