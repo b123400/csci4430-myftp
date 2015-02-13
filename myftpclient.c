@@ -13,6 +13,7 @@
 #include <netinet/in.h> // struct sockaddr_in
 #include <arpa/inet.h> //in_addr_t
 #include <fcntl.h>
+#include <libgen.h>
 #define MAX 1000000
 
 //structure
@@ -27,12 +28,37 @@ unsigned int length; /* length (header + payload) (4 bytes) */
 int isconn=0;
 int isauth=0;
 
+//for the 12 byte message
+int check(struct message_s messages, unsigned char type, unsigned char status, unsigned int len){
+	int i=0;
+	char fake_pro[]="\xe3myftp";
+	printf("server.protocol: %s,%s\n", messages.protocol,fake_pro);
+	printf("type?%d,%d\n", messages.type,type );
+	printf("status?%d,%d\n", messages.status,status );
+	printf("len?:%d\n",ntohs(messages.length));
+	
+	if(messages.protocol[0]!=0xe3)
+		return 0;
+	for(i=1;i<6;i++){
+		//printf("%02x, %02x", (int)messages.protocol[i],fake_pro[i]);
+		if(messages.protocol[i]!=fake_pro[i])
+			return 0;
+	}
+
+	if (messages.type!=type)
+		return 0;
+	else if (messages.status!=status)
+		return 0;
+	else if ( ntohs(messages.length) < len)
+		return 0;
+	else return 1;
+}
+
 //global vairables
 char *token[100];
 char addr[100];
 uint16_t PORT;
 int cmdlenght;
-
 
 //separate the cmd (return the number of arguments)
 int tokenit(char tmp[256]){
@@ -47,8 +73,6 @@ int tokenit(char tmp[256]){
     }
     return i;
 }
-
-
 
 //flow1: connection
 bool connOpen(int sd){
@@ -96,24 +120,21 @@ bool connOpen(int sd){
 
 	if(connect(sd,(struct sockaddr *)&server_addr,sizeof(server_addr))<0){
 		printf("Connection error: %s (Errno:%d)\n",strerror(errno),errno);
-		printf("Server address: %s\n", token[1]);
-		printf("Port: %s\n", token[2]);
+		//printf("Server address: %s\n", token[1]);
+		//printf("Port: %s\n", token[2]);
 		return 0;
 	} else {
 		printf("Server connection accepted.\n");
-		// memcpy(OPEN_CONN_REQUEST.protocol,"0xe3myftp0xA10000000C",12);
-		//OPEN_CONN_REQUEST.protocol[0]=0xe3;
 		strcpy(OPEN_CONN_REQUEST.protocol,"\xe3myftp");
 		OPEN_CONN_REQUEST.type=0xA1;
 		OPEN_CONN_REQUEST.status=0;
 		OPEN_CONN_REQUEST.length=htons(12);
 		
-		// read(OPEN_CONN_REQUEST, buffer, sizeof(struct message_s));
 		memcpy(buffer, &OPEN_CONN_REQUEST,sizeof(OPEN_CONN_REQUEST));
 		int length = sizeof(OPEN_CONN_REQUEST);
 		buffer[length] = '\0';
 		
-		printf("OPEN_CONN_REQUEST.protocol: %02x\n",OPEN_CONN_REQUEST.protocol[0]);
+		//printf("OPEN_CONN_REQUEST.protocol: %02x\n",OPEN_CONN_REQUEST.protocol[0]);
 		int i;
 		for (i = 0; i < length; i++) {
 			printf("%02X ",(int)buffer[i]);
@@ -124,6 +145,7 @@ bool connOpen(int sd){
 			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
 			exit(0);
 		}
+
 		printf("len: %d\n",len);
 		
 		if((len=recv(sd,buffer,sizeof(OPEN_CONN_REPLY),0))<0){
@@ -143,7 +165,7 @@ bool connOpen(int sd){
 		printf("type: %02X\n", OPEN_CONN_REPLY.type);
 		printf("status: %d\n", ntohs(OPEN_CONN_REPLY.status));
 		
-		if(OPEN_CONN_REPLY.status == 1) {
+		if(check(OPEN_CONN_REPLY, 0xA2, 1, len)) {
 			isconn = 1;
 		}
 		
@@ -217,7 +239,7 @@ bool auth(int sd){
 		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 		exit(0);
 	}
-	if (AUTH_REPLY.status==1) {
+	if (check(AUTH_REPLY, 0xA4, 1, len)) {
 		isauth = 1;
 		printf("Logged in\n");
 	} else {
@@ -228,7 +250,7 @@ bool auth(int sd){
 	}
 		
 	free(inputString);
-	if (AUTH_REPLY.status==1) {
+	if (check(AUTH_REPLY, 0xA4, 1, len)) {
 		return 1;
 	} else {
 		return -1;
@@ -279,8 +301,11 @@ bool listFiles(int sd){
 	printf("protocol: %s\n",LIST_REPLY.protocol);
 	printf("type: %02X\n", LIST_REPLY.type);
 	printf("status: %d\n", ntohs(LIST_REPLY.status));
-	
-	printf("Files are: %s\n", &buffer[12]);
+
+	if(check(LIST_REPLY,0xA6,0,len)){ 
+		printf("Files are:\n");
+		printf("%s\n", &buffer[12]);
+	}
 }
 
 // flow4: get cmd
@@ -292,7 +317,7 @@ int getFile(int sd){
 	char filebuffer[4096]="";
 	int i=0;
 	FILE *fp;
-
+	
 	strcpy(GET_REQUEST.protocol,"\xe3myftp");
 	GET_REQUEST.type=0xA7;
 	GET_REQUEST.status=0;
@@ -329,13 +354,13 @@ int getFile(int sd){
 	printf("type: %02X\n", GET_REPLY.type);
 	printf("status: %d\n", GET_REPLY.status);
 
-	if (GET_REPLY.status==1 && GET_REPLY.type == 0xA8){ // should use check function later
+	if (check(GET_REPLY,0xA8,1,len)){ 
 		
-		if((len=recv(sd,buffer,sizeof(buffer),0))<0){
+		if((len=recv(sd,&FILE_DATA,sizeof(FILE_DATA),0))<0){
 			printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 			exit(0);
 		}
-		memcpy(&FILE_DATA, buffer, 12);
+		//memcpy(&FILE_DATA, buffer, 12);
 
 		printf("FD length: %d\n",ntohs(FILE_DATA.length));
 		printf("FD protocol: %s\n",FILE_DATA.protocol);
@@ -343,22 +368,45 @@ int getFile(int sd){
 		printf("FD status: %d\n", FILE_DATA.status);
 		
 		char *outputFilename = basename(token[1]);
-		if (FILE_DATA.type==0xFF){
+		
+		if (check(FILE_DATA,0xFF,0,len)){ //not check payload, if (len < 12) return 0.
 			fp = fopen (outputFilename, "w");
+			int filesize = ntohs(FILE_DATA.length)-12;
+			int totalsize = 0;
+			int buffsize = sizeof(filebuffer) < filesize? sizeof(filebuffer) : filesize;
 
-			for(i=0;i<len-12;i++){
-				filebuffer[i]=buffer[12+i];
-				printf("%c",filebuffer[i]);
+			while (filesize > 0) {
+				
+				printf("waiting for file\n");
+				len=recv(sd,filebuffer,buffsize,0);
+				printf("recved size: %d\n", len);
+				printf("%s",filebuffer);
+				if (len<=0) {
+					printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+					return 0;
+				}
+
+				fwrite(filebuffer, 1, len, fp);
+				totalsize += len;
+				if (totalsize >= filesize) {
+					printf("File downloaded.\n");
+					break;
+				}
+			
 			}
-
-			fwrite(filebuffer, 1, len-12, fp);
-			printf("File downloaded.\n");
+			//for(i=0;i<len-12;i++){
+			//	filebuffer[i]=buffer[12+i];
+			printf("%s",filebuffer);
+			//}
+			
 			fclose(fp);
+			return 1;
 		}
 	} else 
 		printf("Download Fail!\n");
 }
 
+// flow5: put cmd
 int putFile(int sd, char *filename) {
 	struct message_s PUT_REQUEST;
 	struct message_s PUT_REPLY;
@@ -394,13 +442,15 @@ int putFile(int sd, char *filename) {
 	}
 	printf("after put_request\n");
 	
-	if((len=recv(sd,buffer,sizeof(PUT_REPLY),0))<0){
+	if((len=recv(sd,&PUT_REPLY,sizeof(PUT_REPLY),0))<0){
 		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 		exit(0);
 	}
 	
 	printf("received put_reply\n");
 	
+	if(check(PUT_REPLY,0xAA,0,len)){
+
 	int filesize = lseek(fd, 0, SEEK_END);
 	lseek(fd, 0, SEEK_SET);
 	
@@ -425,7 +475,7 @@ int putFile(int sd, char *filename) {
 	if (sendfile(sd, fd, 0, filesize) == -1) {
 		printf("sending error: %s (Errno:%d)\n", strerror(errno),errno);
 		exit(0);
-	}
+	}}
 	close(fd);
 }
 
