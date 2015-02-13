@@ -29,7 +29,7 @@ int isconn=0;
 int isauth=0;
 
 //for the 12 byte message
-int check(struct message_s messages, unsigned char type, unsigned char status, unsigned int len){
+int check(struct message_s messages, unsigned char type, unsigned char status, unsigned int len, int sfflag){
 	int i=0;
 	char fake_pro[]="\xe3myftp";
 	printf("server.protocol: %s,%s\n", messages.protocol,fake_pro);
@@ -49,8 +49,12 @@ int check(struct message_s messages, unsigned char type, unsigned char status, u
 		return 0;
 	else if (messages.status!=status)
 		return 0;
-	else if ( ntohs(messages.length) < len)
-		return 0;
+	else if (sfflag==0){
+		if (ntohs(messages.length) != len)
+			return 0;}
+	else if (sfflag==1){
+		if (ntohs(messages.length) < len)
+			return 0;}
 	else return 1;
 }
 
@@ -165,7 +169,7 @@ bool connOpen(int sd){
 		printf("type: %02X\n", OPEN_CONN_REPLY.type);
 		printf("status: %d\n", ntohs(OPEN_CONN_REPLY.status));
 		
-		if(check(OPEN_CONN_REPLY, 0xA2, 1, len)) {
+		if(check(OPEN_CONN_REPLY, 0xA2, 1, len,0)) {
 			isconn = 1;
 		}
 		
@@ -239,7 +243,7 @@ bool auth(int sd){
 		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 		exit(0);
 	}
-	if (check(AUTH_REPLY, 0xA4, 1, len)) {
+	if (check(AUTH_REPLY, 0xA4, 1, len,0)) {
 		isauth = 1;
 		printf("Logged in\n");
 	} else {
@@ -250,7 +254,7 @@ bool auth(int sd){
 	}
 		
 	free(inputString);
-	if (check(AUTH_REPLY, 0xA4, 1, len)) {
+	if (check(AUTH_REPLY, 0xA4, 1, len,0)) {
 		return 1;
 	} else {
 		return -1;
@@ -302,7 +306,7 @@ bool listFiles(int sd){
 	printf("type: %02X\n", LIST_REPLY.type);
 	printf("status: %d\n", ntohs(LIST_REPLY.status));
 
-	if(check(LIST_REPLY,0xA6,0,len)){ 
+	if(check(LIST_REPLY,0xA6,0,len,0)){ 
 		printf("Files are:\n");
 		printf("%s\n", &buffer[12]);
 	}
@@ -354,7 +358,7 @@ int getFile(int sd){
 	printf("type: %02X\n", GET_REPLY.type);
 	printf("status: %d\n", GET_REPLY.status);
 
-	if (check(GET_REPLY,0xA8,1,len)){ 
+	if (check(GET_REPLY,0xA8,1,len,0)){ 
 		
 		if((len=recv(sd,&FILE_DATA,sizeof(FILE_DATA),0))<0){
 			printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
@@ -369,14 +373,14 @@ int getFile(int sd){
 		
 		char *outputFilename = basename(token[1]);
 		
-		if (check(FILE_DATA,0xFF,0,len)){ //not check payload, if (len < 12) return 0.
+		if (check(FILE_DATA,0xFF,0,len,1)){
 			fp = fopen (outputFilename, "w");
 			int filesize = ntohs(FILE_DATA.length)-12;
 			int totalsize = 0;
 			int buffsize = sizeof(filebuffer) < filesize? sizeof(filebuffer) : filesize;
-
+			printf("A1\n");
 			while (filesize > 0) {
-				
+				printf("A2\n");
 				printf("waiting for file\n");
 				len=recv(sd,filebuffer,buffsize,0);
 				printf("recved size: %d\n", len);
@@ -385,10 +389,13 @@ int getFile(int sd){
 					printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 					return 0;
 				}
-
+				
 				fwrite(filebuffer, 1, len, fp);
 				totalsize += len;
 				if (totalsize >= filesize) {
+					if (totalsize!=filesize){
+						printf("more things are included.\n");
+					}
 					printf("File downloaded.\n");
 					break;
 				}
@@ -449,34 +456,34 @@ int putFile(int sd, char *filename) {
 	
 	printf("received put_reply\n");
 	
-	if(check(PUT_REPLY,0xAA,0,len)){
+	if(check(PUT_REPLY,0xAA,0,len,0)){
 
-		int filesize = lseek(fd, 0, SEEK_END);
-		lseek(fd, 0, SEEK_SET);
-		
-		strcpy(FILE_DATA.protocol,"\xe3myftp");
-		FILE_DATA.type=0xFF;
-		FILE_DATA.status=0;
-		FILE_DATA.length=htons(12+filesize);
-		
-		printf("send file header\n");
-		if((len=send(sd,&FILE_DATA,12,0))<=0){
-			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
-			exit(0);
-		}
-		
-		memcpy(buffer, &PUT_REQUEST, sizeof(PUT_REQUEST));
-		for (i = 0; i < 12; i++) {
-			printf("%02X ",(int)buffer[i]);
-		}
-		printf("\n");
-		
-		printf("uploading file size: %d\n", filesize);
-		if (sendfile(sd, fd, 0, filesize) == -1) {
-			printf("sending error: %s (Errno:%d)\n", strerror(errno),errno);
-			exit(0);
-		}
+	int filesize = lseek(fd, 0, SEEK_END);
+	lseek(fd, 0, SEEK_SET);
+	
+	strcpy(FILE_DATA.protocol,"\xe3myftp");
+	FILE_DATA.type=0xFF;
+	FILE_DATA.status=0;
+	FILE_DATA.length=htons(12+filesize);
+	
+	printf("send file header\n");
+	if((len=send(sd,&FILE_DATA,12,0))<=0){
+		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
 	}
+	
+	memcpy(buffer, &PUT_REQUEST, sizeof(PUT_REQUEST));
+	for (i = 0; i < 12; i++) {
+		printf("%02X ",(int)buffer[i]);
+	}
+	printf("\n");
+	
+	printf("uploading file size: %d\n", filesize);
+	if (sendfile(sd, fd, 0, filesize) == -1) {
+		printf("sending error: %s (Errno:%d)\n", strerror(errno),errno);
+		exit(0);
+	}
+}
 	close(fd);
 }
 
