@@ -451,31 +451,32 @@ int putFile(int sd, char *filename) {
 	
 	if(check(PUT_REPLY,0xAA,0,len)){
 
-	int filesize = lseek(fd, 0, SEEK_END);
-	lseek(fd, 0, SEEK_SET);
-	
-	strcpy(FILE_DATA.protocol,"\xe3myftp");
-	FILE_DATA.type=0xFF;
-	FILE_DATA.status=0;
-	FILE_DATA.length=htons(12+filesize);
-	
-	printf("send file header\n");
-	if((len=send(sd,&FILE_DATA,12,0))<=0){
-		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
-		exit(0);
+		int filesize = lseek(fd, 0, SEEK_END);
+		lseek(fd, 0, SEEK_SET);
+		
+		strcpy(FILE_DATA.protocol,"\xe3myftp");
+		FILE_DATA.type=0xFF;
+		FILE_DATA.status=0;
+		FILE_DATA.length=htons(12+filesize);
+		
+		printf("send file header\n");
+		if((len=send(sd,&FILE_DATA,12,0))<=0){
+			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+			exit(0);
+		}
+		
+		memcpy(buffer, &PUT_REQUEST, sizeof(PUT_REQUEST));
+		for (i = 0; i < 12; i++) {
+			printf("%02X ",(int)buffer[i]);
+		}
+		printf("\n");
+		
+		printf("uploading file size: %d\n", filesize);
+		if (sendfile(sd, fd, 0, filesize) == -1) {
+			printf("sending error: %s (Errno:%d)\n", strerror(errno),errno);
+			exit(0);
+		}
 	}
-	
-	memcpy(buffer, &PUT_REQUEST, sizeof(PUT_REQUEST));
-	for (i = 0; i < 12; i++) {
-		printf("%02X ",(int)buffer[i]);
-	}
-	printf("\n");
-	
-	printf("uploading file size: %d\n", filesize);
-	if (sendfile(sd, fd, 0, filesize) == -1) {
-		printf("sending error: %s (Errno:%d)\n", strerror(errno),errno);
-		exit(0);
-	}}
 	close(fd);
 }
 

@@ -177,43 +177,41 @@ int authandle(int client_sd){
 	
 	for(i=0;i<len-12;i++)
 		payload[i]=buff[12+i];
-	payload[strlen(payload)]=0x0d;
 	if(check(AUTH_REQUEST, 0xA3,0,len)){
 
-	printf("payload: %s\n",payload);
-	fp = fopen ("access.txt", "r");
-	fread(buffer, 256,1,fp);
-	printf("%s\n", buffer);
-	payload[strlen(payload)]=0x00;
-	printf("strlen(payload) = %d\n",strlen(payload));
+		printf("payload: %s\n",payload);
+		fp = fopen ("access.txt", "rb");
+		fread(buffer, 256,1,fp);
+		printf("%s\n", buffer);
+		printf("strlen(payload) = %d\n",strlen(payload));
+		
+		strcpy(AUTH_REPLY.protocol, "\xe3myftp");
+		AUTH_REPLY.type = 0xA4;
+		AUTH_REPLY.length = htons(12);
+		
+		char *token[256];
+		int name_len=tokenit(buffer, token);
+		//for(i=0;i<strlen(token[0]);i++)
+		//	printf("token: %02x\n", token[0][i]);
 	
-	strcpy(AUTH_REPLY.protocol, "\xe3myftp");
-	AUTH_REPLY.type = 0xA4;
-	AUTH_REPLY.length = htons(12);
-	
-	char *token[256];
-	int name_len=tokenit(buffer, token);
-	//for(i=0;i<strlen(token[0]);i++)
-	//	printf("token: %02x\n", token[0][i]);
-
-	for(i=0;i<name_len;i++){
-	
-		printf("strlen of token: %d\n", strlen(token[i]));
-		if (strcmp(token[i], payload) == 0){
-			AUTH_REPLY.status = 1;
-			printf("Your input is right!\n");
-			isauth=1;
-			break;
-		} else {
-			printf("difference: %d\n", strcmp(token[i], payload));
-			AUTH_REPLY.status = 0;
+		for(i=0;i<name_len;i++){
+		
+			printf("strlen of token: %d\n", strlen(token[i]));
+			if (strcmp(token[i], payload) == 0){
+				AUTH_REPLY.status = 1;
+				printf("Your input is right!\n");
+				isauth=1;
+				break;
+			} else {
+				printf("difference: %d\n", strcmp(token[i], payload));
+				AUTH_REPLY.status = 0;
+			}
 		}
-	}
-	
-	if((len=send(client_sd,(void *)&AUTH_REPLY,12,0))<=0){
-		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
-		exit(0);
-	}
+		
+		if((len=send(client_sd,(void *)&AUTH_REPLY,12,0))<=0){
+			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+			exit(0);
+		}
 	}
 	fclose(fp); // dont know why not work to close fp!!!
 	return isauth;
