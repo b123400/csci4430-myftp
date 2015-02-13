@@ -7,7 +7,9 @@
 # include <sys/types.h>
 # include <netinet/in.h>
 # include <dirent.h>
+#include <fcntl.h>
 # include <pthread.h>
+#include <libgen.h>
 
 # define PORT 12345
 
@@ -58,20 +60,28 @@ int tokenit(char tmp[256], char **output){
     return i;
 }
 
-int check(struct message_s messages, unsigned char type, unsigned char status,unsigned int len){
-
-	printf("server.protocol: %s,%s\n", messages.protocol,"\xe3myftp");
+//for the 12 byte message
+int check(struct message_s messages, unsigned char type, unsigned char status, unsigned int len){
+	int i=0;
+	char fake_pro[]="\xe3myftp";
+	printf("server.protocol: %s,%s\n", messages.protocol,fake_pro);
 	printf("type?%d,%d\n", messages.type,type );
 	printf("status?%d,%d\n", messages.status,status );
-	printf("len?:%d,%d\n",ntohs(messages.length), len);
+	printf("len?:%d\n",ntohs(messages.length));
+	
+	if(messages.protocol[0]!=0xe3)
+		return 0;
+	for(i=1;i<6;i++){
+		//printf("%02x, %02x", (int)messages.protocol[i],fake_pro[i]);
+		if(messages.protocol[i]!=fake_pro[i])
+			return 0;
+	}
 
-	//if (strcmp(messages.protocol,"\xe3myftp")!=0)
-		//return 0;
 	if (messages.type!=type)
 		return 0;
 	else if (messages.status!=status)
 		return 0;
-	else if ( ntohs(messages.length) != len)
+	else if ( ntohs(messages.length) < len ) //do we need to check the messages.length equal to the len?
 		return 0;
 	else return 1;
 }
@@ -117,7 +127,7 @@ int connhandle(int client_sd){
 	}
 	
 	// Start making reply
-	if(check(OPEN_CONN_REQUEST, 0xA1,0,12)){
+	if(check(OPEN_CONN_REQUEST, 0xA1, 0, len)){
 
 		strcpy(OPEN_CONN_REPLY.protocol,"\xe3myftp");
 		OPEN_CONN_REPLY.type=0xA2;
@@ -167,6 +177,8 @@ int authandle(int client_sd){
 	
 	for(i=0;i<len-12;i++)
 		payload[i]=buff[12+i];
+	payload[strlen(payload)]=0x0d;
+	if(check(AUTH_REQUEST, 0xA3,0,len)){
 
 	printf("payload: %s\n",payload);
 	fp = fopen ("access.txt", "r");
@@ -202,8 +214,8 @@ int authandle(int client_sd){
 		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
 		exit(0);
 	}
-	
-	//close(fp); // dont know why not work to close fp!!!
+	}
+	fclose(fp); // dont know why not work to close fp!!!
 	return isauth;
 }
 
@@ -261,19 +273,18 @@ int getFile(int client_sd, char filename[100]){
 	struct message_s GET_REPLY;
 	struct message_s FILE_DATA;
 	char buff[4096]="";
-	char filebuff[4096] = {'0xff'};
-	long int filelen;
-	int len = 0;
-	int i;
-	FILE *fp;
+	char filebuff[4096] = {'\xff'};
+	long int filelen=0;
+	int len=0;
+	int i, fd=0;
+	//FILE *fp;
 	
 	//reply the get request.status 0,1
 	strcpy(GET_REPLY.protocol,"\xe3myftp");
 	GET_REPLY.type=0xA8;
 	GET_REPLY.length=htons(12);
 	
-
-	if((fp=fopen(filename, "r"))!=NULL){
+	if((fd=open(filename,O_RDONLY))>-1){
 		printf("This file exists!\n");
 		GET_REPLY.status=1;
 		
@@ -282,9 +293,9 @@ int getFile(int client_sd, char filename[100]){
 		GET_REPLY.status=0;
 	}
 	
-	printf("fopen of %s, status: %d\n",filename, GET_REPLY.status);
+	//printf("fopen of %s, status: %d\n",filename, GET_REPLY.status);
 
-	if((len=send(client_sd,&GET_REPLY,12,0))<=0){
+	if((len=send(client_sd, &GET_REPLY,12,0))<=0){
 		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
 		exit(0);
 	}
@@ -296,57 +307,38 @@ int getFile(int client_sd, char filename[100]){
 		return 0;
 	
 	// go to end and find its size
-	fseek(fp, 0L, SEEK_END);
-	filelen = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
+	//fseek(fp, 0L, SEEK_END);
+	filelen = lseek(fd, 0, SEEK_END);
+	lseek(fd, 0, SEEK_SET);
 	
-	char *beforeGet = filebuff;
-	char *afterGet = fgets(filebuff,4096,fp);
-	
-	if (filelen == 0 || (!afterGet && filebuff == beforeGet)) {
-		// empty file
+	//char *beforeGet = filebuff;
+	//char *afterGet = fgets(filebuff,4096,fp);
 
-		strcpy(FILE_DATA.protocol,"\xe3myftp");
-		FILE_DATA.type=0xFF;
-		FILE_DATA.status=0;
-		FILE_DATA.length=htons(12);
-		
-		memcpy(buff,&FILE_DATA,sizeof(FILE_DATA));
-		if((len=send(client_sd,buff,12,0))<=0){
-			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
-			exit(0);
-		}
-		printf("after sending empty file");
-		
-	} else if (filebuff != NULL) {
-		puts(filebuff);
+	strcpy(FILE_DATA.protocol,"\xe3myftp");
+	FILE_DATA.type=0xFF;
+	FILE_DATA.status=0;
+	FILE_DATA.length=htons(12+filelen);
 
-		strcpy(FILE_DATA.protocol,"\xe3myftp");
-		FILE_DATA.type=0xFF;
-		FILE_DATA.status=0;
-		FILE_DATA.length=htons(filelen+12);
-		
-		memcpy(buff,&FILE_DATA,sizeof(FILE_DATA));
-		printf("FILE_DATA: filelen: %d\n",filelen);
-
-		for(i=0;i<filelen;i++)
-			buff[12+i]=filebuff[i];
-		
-		if((len=send(client_sd,buff,filelen+12,0))<=0){
-			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
-			exit(0);
-		}
-
-		printf("after FILE_DATA\n");
+	//send file header
+	printf("send file header\n");
+	if((len=send(client_sd,&FILE_DATA,12,0))<=0){
+		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
 	}
+	printf("sending file size: %ld\n", filelen);
 
-	fclose(fp);
+	//send the payload
+	if ( sendfile(client_sd, fd, 0, filelen) == -1) {
+		printf("sending error: %s (Errno:%d)\n", strerror(errno),errno);
+		exit(0);
+	}
+	close(fd);
 }
 
 int putFile(int client_sd, char request[100]) {
 	struct message_s PUT_REPLY;
 	struct message_s FILE_DATA;
-	
+	FILE *fp;
 	int len = 0;
 	char *filename = malloc(sizeof(char)*100);
 	char buff[256];
@@ -374,10 +366,10 @@ int putFile(int client_sd, char request[100]) {
 	printf("protocol: %s\n",FILE_DATA.protocol);
 	printf("type: %X\n", FILE_DATA.type);
 	printf("status: %d\n", FILE_DATA.status);
-	
+
+	if (check(FILE_DATA, 0xFF, 0, len)){
 	int filesize = ntohs(FILE_DATA.length) - 12;
 	
-	FILE *fp;
 	char *saveTo = basename(filename);
 	printf("saveTo %s \n", saveTo);
 	if((fp=fopen(saveTo, "w"))==NULL){
@@ -402,7 +394,7 @@ int putFile(int client_sd, char request[100]) {
 			break;
 		}
 	}
-	
+	}
 	fclose(fp);
 	printf("uploaded\n");
 	return 1;
@@ -444,11 +436,11 @@ void *threadFunc(void *arg) {
 				printf("%02X ",(unsigned int)buff[i]);
 			}
 			printf("\n");
-			if (request.type == 0xA5) {
+			if (check(request, 0xA5,0,len)) {
 				// this is a list request
 				listFiles(client_sd);
 				continue;
-			} else if (request.type == 0xA7) {
+			} else if (check(request, 0xA7,0, len)) {
 				// get request
 				char filename[100]="";
 				for(i=0;i<ntohs(request.length)-13;i++)
@@ -456,7 +448,7 @@ void *threadFunc(void *arg) {
 				printf("get %s\n", filename);
 				getFile(client_sd, filename);
 				continue;
-			} else if (request.type == 0xA9) {
+			} else if (check(request, 0xA9,0,len)) {
 				// put request
 				putFile(client_sd, buff);
 				continue;
