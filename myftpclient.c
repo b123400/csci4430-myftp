@@ -49,7 +49,7 @@ int check(struct message_s messages, unsigned char type, unsigned char status, u
 		return 0;
 	else if (messages.status!=status)
 		return 0;
-	else if ( ntohs(messages.length) != len)
+	else if ( ntohs(messages.length) < len)
 		return 0;
 	else return 1;
 }
@@ -302,7 +302,7 @@ bool listFiles(int sd){
 	printf("type: %02X\n", LIST_REPLY.type);
 	printf("status: %d\n", ntohs(LIST_REPLY.status));
 
-	if(check(LIST_REPLY,0xA6,0,len)){
+	if(check(LIST_REPLY,0xA6,0,len)){ 
 		printf("Files are:\n");
 		printf("%s\n", &buffer[12]);
 	}
@@ -314,7 +314,7 @@ int getFile(int sd){
 	struct message_s GET_REPLY;
 	struct message_s FILE_DATA;
 	char buffer[4096]="";
-	char filebuffer[4096];
+	char filebuffer[4096]="";
 	int i=0;
 	FILE *fp;
 	
@@ -368,17 +368,19 @@ int getFile(int sd){
 		printf("FD status: %d\n", FILE_DATA.status);
 		
 		char *outputFilename = basename(token[1]);
-
-		if (check(FILE_DATA,0xFF,0,len)){
+		
+		if (check(FILE_DATA,0xFF,0,len)){ //not check payload, if (len < 12) return 0.
 			fp = fopen (outputFilename, "w");
 			int filesize = ntohs(FILE_DATA.length)-12;
 			int totalsize = 0;
 			int buffsize = sizeof(filebuffer) < filesize? sizeof(filebuffer) : filesize;
 
 			while (filesize > 0) {
+				
 				printf("waiting for file\n");
 				len=recv(sd,filebuffer,buffsize,0);
 				printf("recved size: %d\n", len);
+				printf("%s",filebuffer);
 				if (len<=0) {
 					printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 					return 0;
@@ -440,7 +442,7 @@ int putFile(int sd, char *filename) {
 	}
 	printf("after put_request\n");
 	
-	if((len=recv(sd,buffer,sizeof(PUT_REPLY),0))<0){
+	if((len=recv(sd,&PUT_REPLY,sizeof(PUT_REPLY),0))<0){
 		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 		exit(0);
 	}
