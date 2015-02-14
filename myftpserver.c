@@ -55,12 +55,12 @@ int check(struct message_s messages, unsigned char type, unsigned char status, u
 		return 0;
 	else if (messages.status!=status)
 		return 0;
-	else if (sfflag==0)
+	else if (sfflag==0){
 		if (ntohs(messages.length) != len)
-			return 0;
-	else if (sfflag==1)
-		if (len < 12)
-			return 0;
+			return 0;}
+	else if (sfflag==1){
+		if (ntohs(messages.length) < len)
+			return 0;}
 	else return 1;
 }
 
@@ -155,12 +155,25 @@ int authandle(int client_sd){
 	
 	for(i=0;i<len-12;i++)
 		payload[i]=buff[12+i];
-	payload[strlen(payload)]=0x0d;
+	//payload[strlen(payload)]=0x0d;
+
 	if(check(AUTH_REQUEST, 0xA3,0,len,0)){
 
+	for(i=0;i<strlen(payload);i++)
+		printf("payload: %02x\n",payload[i]);
+
 	printf("payload: %s\n",payload);
-	fp = fopen ("access.txt", "r");
-	fread(buffer, 256,1,fp);
+	fp = fopen ("access.txt", "rb"); //not work with rb
+
+	//find the len of access.txt
+	fseek(fp, 0L, SEEK_END); //why need L?
+	len=ftell(fp);
+	fseek(fp,0,SEEK_SET);
+	fread(buffer, len-2 ,1,fp);
+
+	for(i=0;i<strlen(buffer);i++)
+		printf("%02x\n", buffer[i]);
+
 	printf("%s\n", buffer);
 	payload[strlen(payload)]=0x00;
 	printf("strlen(payload) = %d\n",strlen(payload));
@@ -345,20 +358,24 @@ int putFile(int client_sd, char request[100]) {
 	printf("type: %X\n", FILE_DATA.type);
 	printf("status: %d\n", FILE_DATA.status);
 
-	if (check(FILE_DATA, 0xFF, 0, len,1)){
+	printf("recv len:%d\n",len);
+
+	if (check(FILE_DATA, 0xFF, 0, len, 1)){
+
 	int filesize = ntohs(FILE_DATA.length) - 12;
-	
+	printf("OK1\n");
 	char *saveTo = basename(filename);
 	printf("saveTo %s \n", saveTo);
 	if((fp=fopen(saveTo, "w"))==NULL){
 		printf("open error: %s (Errno:%d)\n", strerror(errno),errno);
 		return 0;
 	}
-	
+	printf("OK2\n");
 	int totalsize = 0;
 	int buffsize = sizeof(buff) < filesize? sizeof(buff) : filesize;
 	
 	while (filesize > 0) {
+		printf("OK3\n");
 		printf("waiting for file\n");
 		len = recv(client_sd, buff, buffsize, 0);
 		printf("recved size: %d\n", len);
@@ -373,8 +390,25 @@ int putFile(int client_sd, char request[100]) {
 		}
 	}
 	}
+	printf("OK4\n");
 	fclose(fp);
 	printf("uploaded\n");
+	return 1;
+}
+
+int quitConn(int client_sd){
+	struct message_s QUIT_REPLY;
+	int len = 0;
+	strcpy(QUIT_REPLY.protocol,"\xe3myftp");
+	QUIT_REPLY.type=0xAC;
+	QUIT_REPLY.status=0;
+	QUIT_REPLY.length=htons(12);
+
+	if((len=send(client_sd,&QUIT_REPLY,12,0))<=0){
+		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
+	}
+
 	return 1;
 }
 
@@ -430,6 +464,13 @@ void *threadFunc(void *arg) {
 				// put request
 				putFile(client_sd, buff);
 				continue;
+			} else if (check(request, 0xAB,0,len,0)) {
+				if(quitConn(client_sd)){
+					printf("your client is offline.");
+					close(client_sd);
+					break;}
+				else
+					continue;
 			}
 			// printf("logouting...\n");
 			// some more handler for other commands
