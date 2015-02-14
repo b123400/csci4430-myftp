@@ -105,7 +105,7 @@ int connhandle(int client_sd){
 	}
 	
 	// Start making reply
-	if(check(OPEN_CONN_REQUEST, 0xA1, 0, len, 0)){
+	if(check(OPEN_CONN_REQUEST, 0xA1, OPEN_CONN_REQUEST.status, len, 0)){
 
 		strcpy(OPEN_CONN_REPLY.protocol,"\xe3myftp");
 		OPEN_CONN_REPLY.type=0xA2;
@@ -157,7 +157,7 @@ int authandle(int client_sd){
 		payload[i]=buff[12+i];
 	//payload[strlen(payload)]=0x0d;
 
-	if(check(AUTH_REQUEST, 0xA3,0,len,0)){
+	if(check(AUTH_REQUEST, 0xA3, AUTH_REQUEST.status,len,0)){
 
 	for(i=0;i<strlen(payload);i++)
 		printf("payload: %02x\n",payload[i]);
@@ -239,7 +239,7 @@ int listFiles(int client_sd) {
 	
 	strcpy(LIST_REPLY.protocol,"\xe3myftp");
 	LIST_REPLY.type=0xA6;
-	LIST_REPLY.status=0;
+	//LIST_REPLY.status=0;
 	LIST_REPLY.length=htons(len+12);
 	
 	printf("Reply with data:\n");
@@ -307,7 +307,7 @@ int getFile(int client_sd, char filename[100]){
 
 	strcpy(FILE_DATA.protocol,"\xe3myftp");
 	FILE_DATA.type=0xFF;
-	FILE_DATA.status=0;
+	//FILE_DATA.status=0;
 	FILE_DATA.length=htons(12+filelen);
 
 	//send file header
@@ -339,7 +339,7 @@ int putFile(int client_sd, char request[100]) {
 	
 	strcpy(PUT_REPLY.protocol,"\xe3myftp");
 	PUT_REPLY.type=0xAA;
-	PUT_REPLY.status=0;
+	//PUT_REPLY.status=0;
 	PUT_REPLY.length=htons(12);
 	
 	if((len=send(client_sd,&PUT_REPLY,12,0))<=0){
@@ -401,7 +401,7 @@ int quitConn(int client_sd){
 	int len = 0;
 	strcpy(QUIT_REPLY.protocol,"\xe3myftp");
 	QUIT_REPLY.type=0xAC;
-	QUIT_REPLY.status=0;
+	//QUIT_REPLY.status=0;
 	QUIT_REPLY.length=htons(12);
 
 	if((len=send(client_sd,&QUIT_REPLY,12,0))<=0){
@@ -416,7 +416,7 @@ void *threadFunc(void *arg) {
 	int client_sd = (int)arg;
 	int isconn=0;
 	int isauth=0;
-	
+	int i=0;
 	while(1) {
 		// this loop is for each client
 		if(isconn!=1){
@@ -448,23 +448,26 @@ void *threadFunc(void *arg) {
 				printf("%02X ",(unsigned int)buff[i]);
 			}
 			printf("\n");
-			if (check(request, 0xA5,0,len,0)) {
+			if (check(request, 0xA5,request.status,len,0)) {
 				// this is a list request
 				listFiles(client_sd);
 				continue;
-			} else if (check(request, 0xA7,0, len,0)) {
+			} else if (check(request, 0xA7,request.status, len,0)) {
 				// get request
-				char filename[100]="";
-				for(i=0;i<ntohs(request.length)-13;i++)
-					filename[i]=buff[13+i];
+				char *filename = malloc(sizeof(char)*100);
+				//for(i=0;i<ntohs(request.length)-12;i++)
+				strcpy(filename, &buff[12]);
 				printf("get %s\n", filename);
+				//for(i=0;i<len;i++)
+				//	printf("%02x ", buff[i]);
 				getFile(client_sd, filename);
+				free(filename);
 				continue;
-			} else if (check(request, 0xA9,0,len,0)) {
+			} else if (check(request, 0xA9,request.status,len,0)) {
 				// put request
 				putFile(client_sd, buff);
 				continue;
-			} else if (check(request, 0xAB,0,len,0)) {
+			} else if (check(request, 0xAB,request.status,len,0)) {
 				if(quitConn(client_sd)){
 					printf("your client is offline.");
 					close(client_sd);
