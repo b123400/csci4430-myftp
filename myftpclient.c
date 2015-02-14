@@ -487,6 +487,37 @@ int putFile(int sd, char *filename) {
 	close(fd);
 }
 
+int quitConn(int sd){
+	struct message_s QUIT_REQUEST;
+	struct message_s QUIT_REPLY;
+	int len = 0;
+	strcpy(QUIT_REQUEST.protocol,"\xe3myftp");
+	QUIT_REQUEST.type=0xAB;
+	QUIT_REQUEST.status=0;
+	QUIT_REQUEST.length=htons(12);
+	
+	printf("send QUIT request.\n");
+	if((len=send(sd,&QUIT_REQUEST,12,0))<=0){
+		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+		exit(0);
+	}
+	
+	printf("after QUIT request, wait reply\n");
+	if((len=recv(sd,&QUIT_REPLY,sizeof(QUIT_REPLY),0))<0){
+		printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
+		exit(0);
+	}
+	
+	if(check(QUIT_REPLY,0xAC,0,len,0)){
+		printf("You disconnected safely.");
+		return 1;
+	} else {
+		printf("You cannot disconnected.");
+		return 0;
+	}
+
+}
+
 int main(){
 	int sd = 0;
 	while(1){
@@ -519,6 +550,8 @@ int main(){
 				putFile(sd, token[1]);
 			}
 			else if (strcmp(token[0], "quit")==0 && cmdlen==1){
+				if (quitConn(sd))
+					break;
 				printf("quiting...\n");
 			}
 			else {
