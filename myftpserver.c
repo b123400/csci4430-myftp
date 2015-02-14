@@ -278,7 +278,6 @@ int getFile(int client_sd, char filename[100]){
 	if((fd=open(filename,O_RDONLY))>-1){
 		printf("This file exists!\n");
 		GET_REPLY.status=1;
-		
 	} else{
 		printf("This file does not exist!\n");
 		GET_REPLY.status=0;
@@ -308,7 +307,8 @@ int getFile(int client_sd, char filename[100]){
 	strcpy(FILE_DATA.protocol,"\xe3myftp");
 	FILE_DATA.type=0xFF;
 	//FILE_DATA.status=0;
-	FILE_DATA.length=htons(12+filelen);
+	FILE_DATA.length=htonl(12+filelen);
+	printf("FILE_DATA.length:%d",ntohl(FILE_DATA.length));
 
 	//send file header
 	printf("send file header\n");
@@ -319,10 +319,13 @@ int getFile(int client_sd, char filename[100]){
 	printf("sending file size: %ld\n", filelen);
 
 	//send the payload
-	if ( sendfile(client_sd, fd, 0, filelen) == -1) {
+	
+	if ( (len=sendfile(client_sd, fd, 0, filelen)) == -1) {
 		printf("sending error: %s (Errno:%d)\n", strerror(errno),errno);
 		exit(0);
 	}
+	
+	printf("sendfile len:%d\n",len);
 	close(fd);
 }
 
@@ -332,7 +335,7 @@ int putFile(int client_sd, char request[100]) {
 	FILE *fp;
 	int len = 0;
 	char *filename = malloc(sizeof(char)*100);
-	char buff[256];
+	char buff[4096];
 	
 	strcpy(filename, &request[12]);
 	printf("uploading: %s\n", filename);
@@ -353,7 +356,7 @@ int putFile(int client_sd, char request[100]) {
 	}
 	
 	printf("received file header\n");
-	printf("length: %d\n",ntohs(FILE_DATA.length));
+	printf("length: %d\n",ntohl(FILE_DATA.length));
 	printf("protocol: %s\n",FILE_DATA.protocol);
 	printf("type: %X\n", FILE_DATA.type);
 	printf("status: %d\n", FILE_DATA.status);
@@ -362,20 +365,20 @@ int putFile(int client_sd, char request[100]) {
 
 	if (check(FILE_DATA, 0xFF, 0, len, 1)){
 
-	int filesize = ntohs(FILE_DATA.length) - 12;
-	printf("OK1\n");
+	int filesize = ntohl(FILE_DATA.length) - 12;
+	
 	char *saveTo = basename(filename);
 	printf("saveTo %s \n", saveTo);
-	if((fp=fopen(saveTo, "w"))==NULL){
+	if((fp=fopen(saveTo, "wb"))==NULL){
 		printf("open error: %s (Errno:%d)\n", strerror(errno),errno);
 		return 0;
 	}
-	printf("OK2\n");
+	
 	int totalsize = 0;
 	int buffsize = sizeof(buff) < filesize? sizeof(buff) : filesize;
 	
 	while (filesize > 0) {
-		printf("OK3\n");
+		
 		printf("waiting for file\n");
 		len = recv(client_sd, buff, buffsize, 0);
 		printf("recved size: %d\n", len);
@@ -390,7 +393,7 @@ int putFile(int client_sd, char request[100]) {
 		}
 	}
 	}
-	printf("OK4\n");
+
 	fclose(fp);
 	printf("uploaded\n");
 	return 1;
