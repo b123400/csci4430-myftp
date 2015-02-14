@@ -53,7 +53,7 @@ int check(struct message_s messages, unsigned char type, unsigned char status, u
 		if (ntohs(messages.length) != len)
 			return 0;}
 	else if (sfflag==1){
-		if (ntohs(messages.length) < len)
+		if (ntohl(messages.length) < len)
 			return 0;}
 	else return 1;
 }
@@ -368,7 +368,7 @@ int getFile(int sd){
 		}
 		//memcpy(&FILE_DATA, buffer, 12);
 
-		printf("FD length: %d\n",ntohs(FILE_DATA.length));
+		printf("FD length: %d\n",ntohl(FILE_DATA.length));
 		printf("FD protocol: %s\n",FILE_DATA.protocol);
 		printf("FD type: %02X\n", FILE_DATA.type);
 		printf("FD status: %d\n", FILE_DATA.status);
@@ -377,16 +377,15 @@ int getFile(int sd){
 		
 		if (check(FILE_DATA,0xFF,FILE_DATA.status,len,1)){
 			fp = fopen (outputFilename, "w");
-			int filesize = ntohs(FILE_DATA.length)-12;
+			int filesize = ntohl(FILE_DATA.length)-12;
 			int totalsize = 0;
 			int buffsize = sizeof(filebuffer) < filesize? sizeof(filebuffer) : filesize;
-			printf("A1\n");
+
 			while (filesize > 0) {
-				printf("A2\n");
 				printf("waiting for file\n");
 				len=recv(sd,filebuffer,buffsize,0);
 				printf("recved size: %d\n", len);
-				printf("%s",filebuffer);
+				//printf("%s",filebuffer);
 				if (len<=0) {
 					printf("receive error: %s (Errno:%d)\n", strerror(errno),errno);
 					return 0;
@@ -405,7 +404,7 @@ int getFile(int sd){
 			}
 			//for(i=0;i<len-12;i++){
 			//	filebuffer[i]=buffer[12+i];
-			printf("%s",filebuffer);
+			//printf("%s",filebuffer);
 			//}
 			
 			fclose(fp);
@@ -466,7 +465,7 @@ int putFile(int sd, char *filename) {
 	strcpy(FILE_DATA.protocol,"\xe3myftp");
 	FILE_DATA.type=0xFF;
 	FILE_DATA.status=0;
-	FILE_DATA.length=htons(12+filesize);
+	FILE_DATA.length=htonl(12+filesize);
 	
 	printf("send file header\n");
 	if((len=send(sd,&FILE_DATA,12,0))<=0){
