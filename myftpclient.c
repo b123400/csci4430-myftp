@@ -131,9 +131,10 @@ bool connOpen(int sd){
 		printf("Server connection accepted.\n");
 		strcpy(OPEN_CONN_REQUEST.protocol,"\xe3myftp");
 		OPEN_CONN_REQUEST.type=0xA1;
-		OPEN_CONN_REQUEST.status=0;
+		//OPEN_CONN_REQUEST.status=0;
 		OPEN_CONN_REQUEST.length=htons(12);
-		
+		printf("OPEN_CONN_REQUEST.status: %02x\n",OPEN_CONN_REQUEST.status);
+
 		memcpy(buffer, &OPEN_CONN_REQUEST,sizeof(OPEN_CONN_REQUEST));
 		int length = sizeof(OPEN_CONN_REQUEST);
 		buffer[length] = '\0';
@@ -219,7 +220,7 @@ bool auth(int sd){
 
 	strcpy(AUTH_REQUEST.protocol,"\xe3myftp");
 	AUTH_REQUEST.type=0xA3;
-	AUTH_REQUEST.status=0;
+	//AUTH_REQUEST.status=0;
 	AUTH_REQUEST.length=htons(12+strlen(authset)+1);
 	printf("AUTH_REQUEST.length:%d\n",ntohs(AUTH_REQUEST.length));
 	memcpy(buffer, &AUTH_REQUEST, sizeof(AUTH_REQUEST));
@@ -269,7 +270,7 @@ bool listFiles(int sd){
 	
 	strcpy(LIST_REQUEST.protocol,"\xe3myftp");
 	LIST_REQUEST.type=0xA5;
-	LIST_REQUEST.status=0;
+	//LIST_REQUEST.status=0;
 	LIST_REQUEST.length=htons(12);
 	
 	memcpy(buffer, &LIST_REQUEST,sizeof(LIST_REQUEST));
@@ -306,7 +307,7 @@ bool listFiles(int sd){
 	printf("type: %02X\n", LIST_REPLY.type);
 	printf("status: %d\n", ntohs(LIST_REPLY.status));
 
-	if(check(LIST_REPLY,0xA6,0,len,0)){ 
+	if(check(LIST_REPLY,0xA6,LIST_REPLY.status,len,0)){ 
 		printf("Files are:\n");
 		printf("%s\n", &buffer[12]);
 	}
@@ -324,15 +325,16 @@ int getFile(int sd){
 	
 	strcpy(GET_REQUEST.protocol,"\xe3myftp");
 	GET_REQUEST.type=0xA7;
-	GET_REQUEST.status=0;
+	//GET_REQUEST.status=0;
 	GET_REQUEST.length=htons(12+strlen(token[1])+1);
 	int length = sizeof(GET_REQUEST);
-	buffer[length] = '\0';
+	
 
 	memcpy(buffer, &GET_REQUEST,sizeof(GET_REQUEST));
 	
 	for(i=0;i<strlen(token[1]);i++)
-		buffer[13+i]=token[1][i];
+		buffer[12+i]=token[1][i];
+	buffer[12+i] = 0x00;
 
 	printf("sending get request:\n");
 
@@ -373,7 +375,7 @@ int getFile(int sd){
 		
 		char *outputFilename = basename(token[1]);
 		
-		if (check(FILE_DATA,0xFF,0,len,1)){
+		if (check(FILE_DATA,0xFF,FILE_DATA.status,len,1)){
 			fp = fopen (outputFilename, "w");
 			int filesize = ntohs(FILE_DATA.length)-12;
 			int totalsize = 0;
@@ -431,7 +433,7 @@ int putFile(int sd, char *filename) {
 	
 	strcpy(PUT_REQUEST.protocol,"\xe3myftp");
 	PUT_REQUEST.type=0xA9;
-	PUT_REQUEST.status=0;
+	//PUT_REQUEST.status=0;
 	PUT_REQUEST.length=htons(12+filenameLength+1);
 	
 	memcpy(buffer, &PUT_REQUEST, sizeof(PUT_REQUEST));
@@ -456,7 +458,7 @@ int putFile(int sd, char *filename) {
 	
 	printf("received put_reply\n");
 	
-	if(check(PUT_REPLY,0xAA,0,len,0)){
+	if(check(PUT_REPLY,0xAA,PUT_REPLY.status,len,0)){
 
 	int filesize = lseek(fd, 0, SEEK_END);
 	lseek(fd, 0, SEEK_SET);
@@ -493,7 +495,7 @@ int quitConn(int sd){
 	int len = 0;
 	strcpy(QUIT_REQUEST.protocol,"\xe3myftp");
 	QUIT_REQUEST.type=0xAB;
-	QUIT_REQUEST.status=0;
+	//QUIT_REQUEST.status=0;
 	QUIT_REQUEST.length=htons(12);
 	
 	printf("send QUIT request.\n");
@@ -508,11 +510,11 @@ int quitConn(int sd){
 		exit(0);
 	}
 	
-	if(check(QUIT_REPLY,0xAC,0,len,0)){
-		printf("You disconnected safely.");
+	if(check(QUIT_REPLY,0xAC,QUIT_REPLY.status,len,0)){
+		printf("You disconnected safely.\n");
 		return 1;
 	} else {
-		printf("You cannot disconnected.");
+		printf("You cannot disconnected.\n");
 		return 0;
 	}
 
