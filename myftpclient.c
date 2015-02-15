@@ -526,9 +526,12 @@ int main(){
 			sd = socket(AF_INET, SOCK_STREAM, 0);
 			connOpen(sd);
 		} else if(isconn && !isauth) {
-			auth(sd);
+			isauth = auth(sd);
 			if (isauth==-1) {
 				// failed, reset sd
+				sd = 0;
+				isauth = 0;
+				isconn = 0;
 				continue;
 			}
 		} else {

@@ -545,8 +545,8 @@ int main(int argc, char** argv){
 			exit(0);
 		}else{
            //clientip[client_sd]=client_addr.sin_addr;
-            
-	        	printf("receive connection from IP:%s\n", inet_ntoa(client_addr.sin_addr.s_addr));
+           
+	        	printf("receive connection from IP:%d\n", inet_ntoa(client_addr.sin_addr));
          	    clientip[client_sd]=client_addr.sin_addr.s_addr;
 	          	//printf("%d\n",clientip[client_sd]);
 
