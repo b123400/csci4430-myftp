@@ -35,7 +35,7 @@ int check(struct message_s messages, unsigned char type, unsigned char status, u
 	printf("server.protocol: %s,%s\n", messages.protocol,fake_pro);
 	printf("type?%d,%d\n", messages.type,type );
 	printf("status?%d,%d\n", messages.status,status );
-	printf("len?:%d\n",ntohs(messages.length));
+	printf("len?:%d\n",ntohl(messages.length));
 	
 	if(messages.protocol[0]!=0xe3)
 		return 0;
@@ -50,12 +50,12 @@ int check(struct message_s messages, unsigned char type, unsigned char status, u
 	else if (messages.status!=status)
 		return 0;
 	else if (sfflag==0){
-		if (ntohs(messages.length) != len)
+		if (ntohl(messages.length) != len)
 			return 0;}
 	else if (sfflag==1){
 		if (ntohl(messages.length) < len)
 			return 0;}
-	else return 1;
+	return 1;
 }
 
 //global vairables
@@ -132,7 +132,7 @@ bool connOpen(int sd){
 		strcpy(OPEN_CONN_REQUEST.protocol,"\xe3myftp");
 		OPEN_CONN_REQUEST.type=0xA1;
 		//OPEN_CONN_REQUEST.status=0;
-		OPEN_CONN_REQUEST.length=htons(12);
+		OPEN_CONN_REQUEST.length=htonl(12);
 		printf("OPEN_CONN_REQUEST.status: %02x\n",OPEN_CONN_REQUEST.status);
 
 		memcpy(buffer, &OPEN_CONN_REQUEST,sizeof(OPEN_CONN_REQUEST));
@@ -165,10 +165,10 @@ bool connOpen(int sd){
 		}
 		printf("\n");
 		
-		printf("length: %d\n",ntohs(OPEN_CONN_REPLY.length));
+		printf("length: %d\n",ntohl(OPEN_CONN_REPLY.length));
 		printf("protocol: %s\n",OPEN_CONN_REPLY.protocol);
 		printf("type: %02X\n", OPEN_CONN_REPLY.type);
-		printf("status: %d\n", ntohs(OPEN_CONN_REPLY.status));
+		printf("status: %d\n", ntohl(OPEN_CONN_REPLY.status));
 		
 		if(check(OPEN_CONN_REPLY, 0xA2, 1, len,0)) {
 			isconn = 1;
@@ -183,7 +183,7 @@ bool connOpen(int sd){
 // return 1 = login success
 // return 0 = login canceled(entering wrong command)
 // return -1 = login failed(wrong password)
-bool auth(int sd){
+int auth(int sd){
 
 	struct message_s AUTH_REQUEST;
 	struct message_s AUTH_REPLY;
@@ -221,8 +221,8 @@ bool auth(int sd){
 	strcpy(AUTH_REQUEST.protocol,"\xe3myftp");
 	AUTH_REQUEST.type=0xA3;
 	//AUTH_REQUEST.status=0;
-	AUTH_REQUEST.length=htons(12+strlen(authset)+1);
-	printf("AUTH_REQUEST.length:%d\n",ntohs(AUTH_REQUEST.length));
+	AUTH_REQUEST.length=htonl(12+strlen(authset)+1);
+	printf("AUTH_REQUEST.length:%d\n",ntohl(AUTH_REQUEST.length));
 	memcpy(buffer, &AUTH_REQUEST, sizeof(AUTH_REQUEST));
 	
 	for(i=0;i<strlen(authset);i++)
@@ -271,7 +271,7 @@ bool listFiles(int sd){
 	strcpy(LIST_REQUEST.protocol,"\xe3myftp");
 	LIST_REQUEST.type=0xA5;
 	//LIST_REQUEST.status=0;
-	LIST_REQUEST.length=htons(12);
+	LIST_REQUEST.length=htonl(12);
 	
 	memcpy(buffer, &LIST_REQUEST,sizeof(LIST_REQUEST));
 	int length = sizeof(LIST_REQUEST);
@@ -302,10 +302,10 @@ bool listFiles(int sd){
 	// printf("\n");
 	
 	memcpy(&LIST_REPLY, buffer, 12);
-	printf("length: %d\n",ntohs(LIST_REPLY.length));
+	printf("length: %d\n",ntohl(LIST_REPLY.length));
 	printf("protocol: %s\n",LIST_REPLY.protocol);
 	printf("type: %02X\n", LIST_REPLY.type);
-	printf("status: %d\n", ntohs(LIST_REPLY.status));
+	printf("status: %d\n", ntohl(LIST_REPLY.status));
 
 	if(check(LIST_REPLY,0xA6,LIST_REPLY.status,len,0)){ 
 		printf("Files are:\n");
@@ -326,7 +326,7 @@ int getFile(int sd){
 	strcpy(GET_REQUEST.protocol,"\xe3myftp");
 	GET_REQUEST.type=0xA7;
 	//GET_REQUEST.status=0;
-	GET_REQUEST.length=htons(12+strlen(token[1])+1);
+	GET_REQUEST.length=htonl(12+strlen(token[1])+1);
 	int length = sizeof(GET_REQUEST);
 	
 
@@ -355,7 +355,7 @@ int getFile(int sd){
 	}
 
 	
-	printf("length: %d\n",ntohs(GET_REPLY.length));
+	printf("length: %d\n",ntohl(GET_REPLY.length));
 	printf("protocol: %s\n",GET_REPLY.protocol);
 	printf("type: %02X\n", GET_REPLY.type);
 	printf("status: %d\n", GET_REPLY.status);
@@ -376,7 +376,7 @@ int getFile(int sd){
 		char *outputFilename = basename(token[1]);
 		
 		if (check(FILE_DATA,0xFF,FILE_DATA.status,len,1)){
-			fp = fopen (outputFilename, "w");
+			fp = fopen (outputFilename, "wb");
 			int filesize = ntohl(FILE_DATA.length)-12;
 			int totalsize = 0;
 			int buffsize = sizeof(filebuffer) < filesize? sizeof(filebuffer) : filesize;
@@ -433,7 +433,7 @@ int putFile(int sd, char *filename) {
 	strcpy(PUT_REQUEST.protocol,"\xe3myftp");
 	PUT_REQUEST.type=0xA9;
 	//PUT_REQUEST.status=0;
-	PUT_REQUEST.length=htons(12+filenameLength+1);
+	PUT_REQUEST.length=htonl(12+filenameLength+1);
 	
 	memcpy(buffer, &PUT_REQUEST, sizeof(PUT_REQUEST));
 	strcpy(&buffer[12], filename);
@@ -495,7 +495,7 @@ int quitConn(int sd){
 	strcpy(QUIT_REQUEST.protocol,"\xe3myftp");
 	QUIT_REQUEST.type=0xAB;
 	//QUIT_REQUEST.status=0;
-	QUIT_REQUEST.length=htons(12);
+	QUIT_REQUEST.length=htonl(12);
 	
 	printf("send QUIT request.\n");
 	if((len=send(sd,&QUIT_REQUEST,12,0))<=0){
@@ -523,14 +523,13 @@ int main(){
 	int sd = 0;
 	while(1){
 		if(!isconn) {
-			if(sd==0)
-				sd = socket(AF_INET, SOCK_STREAM, 0);
+			sd = socket(AF_INET, SOCK_STREAM, 0);
 			connOpen(sd);
 		} else if(isconn && !isauth) {
 			auth(sd);
 			if (isauth==-1) {
 				// failed, reset sd
-				sd = 0;
+				continue;
 			}
 		} else {
 			// connected and authed
@@ -568,3 +567,4 @@ int main(){
 	close(sd);
 	return 0;
 }
+
