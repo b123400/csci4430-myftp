@@ -272,6 +272,8 @@ int getFile(int client_sd, char filename[100]){
 	long int filelen=0;
 	int len=0;
 	int i, fd=0;
+	char realfilepath[PATH_MAX+1];
+	char aimfilepath[PATH_MAX+1];
 	//char realfilepath[PATH_MAX+1];
 	//int isgoodfile;
 	//FILE *fp;
@@ -280,14 +282,21 @@ int getFile(int client_sd, char filename[100]){
 	strcpy(GET_REPLY.protocol,"\xe3myftp");
 	GET_REPLY.type=0xA8;
 	GET_REPLY.length=htonl(12);
-
+	
+	realpath(filename, realfilepath);
+	printf("realfilepath:%s\n", realfilepath);
+	realpath(basename(filename),aimfilepath);
+	printf("aimfilepath:%s\n", aimfilepath);
+	
 	//realpath(filename,realfilepath);
 	//printf("realfilepath:%s\n", realfilepath);
 	strcpy(openFrom, "./filedir/");
 	strcat(openFrom, basename(filename));
 	printf("openFrom:%s\n",openFrom);
-	
-	if((fd=open(openFrom,O_RDONLY))>-1){
+		if (strcmp(realfilepath,aimfilepath)!=0){
+        printf("This file does not exist!\n");
+		GET_REPLY.status=0;}
+	else if((fd=open(openFrom,O_RDONLY))>-1){
 		printf("This file exists!\n");
 		GET_REPLY.status=1;
 	} else{
