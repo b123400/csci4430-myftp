@@ -119,8 +119,8 @@ bool connOpen(int sd){
 	printf("uint16_t PORT: %d\n",PORT);
 	
 	server_addr.sin_family=AF_INET;
-	server_addr.sin_addr.s_addr=inet_addr("127.0.0.1");
-	server_addr.sin_port=htons(12345);
+	server_addr.sin_addr.s_addr=inet_addr(token[1]);
+	server_addr.sin_port=htons(PORT);
 
 	if(connect(sd,(struct sockaddr *)&server_addr,sizeof(server_addr))<0){
 		printf("Connection error: %s (Errno:%d)\n",strerror(errno),errno);
