@@ -7,11 +7,16 @@
 # include <sys/types.h>
 # include <netinet/in.h>
 # include <dirent.h>
-#include <fcntl.h>
+# include <fcntl.h>
 # include <pthread.h>
-#include <libgen.h>
+# include <libgen.h>
+# include <limits.h>
 
-# define PORT 12345
+//# define PORT 12345
+
+char *clientip[100];
+unsigned short clientpt[100];
+uint16_t serPORT=0;
 
 //structure
 struct message_s {
@@ -38,10 +43,10 @@ int tokenit(char tmp[256], char **output){
 int check(struct message_s messages, unsigned char type, unsigned char status, unsigned int len, int sfflag){
 	int i=0;
 	char fake_pro[]="\xe3myftp";
-	printf("server.protocol: %s,%s\n", messages.protocol,fake_pro);
+	//printf("server.protocol: %s,%s\n", messages.protocol,fake_pro);
 	printf("type?%d,%d\n", messages.type,type );
-	printf("status?%d,%d\n", messages.status,status );
-	printf("len?:%d\n",ntohs(messages.length));
+	//printf("status?%d,%d\n", messages.status,status );
+	//printf("len?:%d\n",ntohs(messages.length));
 	
 	if(messages.protocol[0]!=0xe3)
 		return 0;
@@ -59,7 +64,7 @@ int check(struct message_s messages, unsigned char type, unsigned char status, u
 		if (ntohs(messages.length) != len)
 			return 0;}
 	else if (sfflag==1){
-		if (ntohs(messages.length) < len)
+		if (ntohl(messages.length) < len)
 			return 0;}
 	else return 1;
 }
@@ -83,21 +88,22 @@ int connhandle(int client_sd){
 	printf("len: %d\n",len);
     printf("AFTER RECV\n");
 	buff[len]='\0';
-	printf("buffer content:\n");
+	//printf("buffer content:\n");
 
 	int i;
-	for (i = 0; i < len; i++) {
-		printf("%02X ",(unsigned int)buff[i]);
-	}
-	printf("\n");
-	
+	//for (i = 0; i < len; i++) {
+	//	printf("%02X ",(unsigned int)buff[i]);
+	//}
+	//printf("\n");
+
+	/*
 	printf("RECEIVED INFO: ");
 	if(strlen(buff)!=0) {
 		printf("length: %d\n",ntohs(OPEN_CONN_REQUEST.length));
 		printf("protocol: %s\n",OPEN_CONN_REQUEST.protocol);
 		printf("type: %X\n", OPEN_CONN_REQUEST.type);
 		printf("status: %d\n", OPEN_CONN_REQUEST.status);
-	}
+	}*/
 	
 	if(strcmp("exit",buff)==0){
 		close(client_sd);
@@ -159,22 +165,22 @@ int authandle(int client_sd){
 
 	if(check(AUTH_REQUEST, 0xA3, AUTH_REQUEST.status,len,0)){
 
-	for(i=0;i<strlen(payload);i++)
-		printf("payload: %02x\n",payload[i]);
+	//for(i=0;i<strlen(payload);i++)
+	//	printf("payload: %02x\n",payload[i]);
 
-	printf("payload: %s\n",payload);
+	//printf("payload: %s\n",payload);
 	fp = fopen ("access.txt", "rb"); //not work with rb
 
 	//find the len of access.txt
 	fseek(fp, 0L, SEEK_END); //why need L?
 	len=ftell(fp);
 	fseek(fp,0,SEEK_SET);
-	fread(buffer, len-2 ,1,fp);
+	fread(buffer, len ,1,fp);
 
 	for(i=0;i<strlen(buffer);i++)
 		printf("%02x\n", buffer[i]);
+		//printf("buffer size %d\n", buffer[i]);
 
-	printf("%s\n", buffer);
 	payload[strlen(payload)]=0x00;
 	printf("strlen(payload) = %d\n",strlen(payload));
 	
@@ -188,7 +194,7 @@ int authandle(int client_sd){
 	//	printf("token: %02x\n", token[0][i]);
 
 	for(i=0;i<name_len;i++){
-	
+		token[i][strlen(token[i])-1] = 0x00;
 		printf("strlen of token: %d\n", strlen(token[i]));
 		if (strcmp(token[i], payload) == 0){
 			AUTH_REPLY.status = 1;
@@ -268,12 +274,20 @@ int getFile(int client_sd, char filename[100]){
 	long int filelen=0;
 	int len=0;
 	int i, fd=0;
+	//char realfilepath[PATH_MAX+1];
+	//int isgoodfile;
 	//FILE *fp;
-	
+	char openFrom[100]="";
 	//reply the get request.status 0,1
 	strcpy(GET_REPLY.protocol,"\xe3myftp");
 	GET_REPLY.type=0xA8;
 	GET_REPLY.length=htons(12);
+	
+	//realpath(filename,realfilepath);
+	//printf("realfilepath:%s\n", realfilepath);
+	strcpy(openFrom, "./filedir/");
+	strcat(openFrom, basename(filename));
+	printf("openFrom:%s\n",openFrom);
 	
 	if((fd=open(filename,O_RDONLY))>-1){
 		printf("This file exists!\n");
@@ -284,7 +298,7 @@ int getFile(int client_sd, char filename[100]){
 	}
 	
 	//printf("fopen of %s, status: %d\n",filename, GET_REPLY.status);
-
+	
 	if((len=send(client_sd, &GET_REPLY,12,0))<=0){
 		printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
 		exit(0);
@@ -308,7 +322,7 @@ int getFile(int client_sd, char filename[100]){
 	FILE_DATA.type=0xFF;
 	//FILE_DATA.status=0;
 	FILE_DATA.length=htonl(12+filelen);
-	printf("FILE_DATA.length:%d",ntohl(FILE_DATA.length));
+	//printf("FILE_DATA.length:%d",ntohl(FILE_DATA.length));
 
 	//send file header
 	printf("send file header\n");
@@ -367,7 +381,9 @@ int putFile(int client_sd, char request[100]) {
 
 	int filesize = ntohl(FILE_DATA.length) - 12;
 	
-	char *saveTo = basename(filename);
+	char saveTo[100]="./filedir/";
+	strcat(saveTo, basename(filename));
+	
 	printf("saveTo %s \n", saveTo);
 	if((fp=fopen(saveTo, "wb"))==NULL){
 		printf("open error: %s (Errno:%d)\n", strerror(errno),errno);
@@ -395,7 +411,7 @@ int putFile(int client_sd, char request[100]) {
 	}
 
 	fclose(fp);
-	printf("uploaded\n");
+	printf("uploaded!\n");
 	return 1;
 }
 
@@ -473,6 +489,8 @@ void *threadFunc(void *arg) {
 			} else if (check(request, 0xAB,request.status,len,0)) {
 				if(quitConn(client_sd)){
 					printf("your client is offline.");
+					printf("disconnection from IP:%s\n",clientip[client_sd]);
+					printf("disconnection from PORT:%u\n",clientpt[client_sd]);
 					close(client_sd);
 					break;}
 				else
@@ -496,8 +514,11 @@ int main(int argc, char** argv){
 	memset(&server_addr,0,sizeof(server_addr));
 	server_addr.sin_family=AF_INET;
 	server_addr.sin_addr.s_addr=htonl(INADDR_ANY);
-	server_addr.sin_port=htons(12345);
-
+	
+	serPORT=(unsigned short) strtoul(argv[1], NULL, 0);
+	printf("uint16_t PORT: %d\n",serPORT);
+ 
+	server_addr.sin_port=htons(serPORT);
 	if(bind(sd,(struct sockaddr *) &server_addr,sizeof(server_addr))<0){
 		printf("bind error: %s (Errno:%d)\n",strerror(errno),errno);
 		exit(0);
@@ -521,7 +542,13 @@ int main(int argc, char** argv){
 			printf("accept erro: %s (Errno:%d)\n",strerror(errno),errno);
 			exit(0);
 		}else{
-      		printf("receive connection from %d\n",inet_ntoa(client_addr.sin_addr.s_addr));
+      		printf("client_sd:%d\n",client_sd);
+		printf("receive connection from IP:%s\n",inet_ntoa(client_addr.sin_addr.s_addr));
+		clientip[client_sd]=inet_ntoa(client_addr.sin_addr.s_addr);
+		//printf("%s\n",clientip[client_sd]);
+		printf("receive connection from PORT:%u\n",client_addr.sin_port);
+		clientpt[client_sd]=client_addr.sin_port;
+		//printf("%d\n",clientpt[client_sd]);
    		}
   		printf("AFTER ACCEPT\n");
   		
