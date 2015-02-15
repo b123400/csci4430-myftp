@@ -177,12 +177,10 @@ int authandle(int client_sd){
 	fseek(fp,0,SEEK_SET);
 	fread(buffer, len ,1,fp);
 
-	for(i=0;i<strlen(buffer);i++)
-		printf("%02x\n", buffer[i]);
 		//printf("buffer size %d\n", buffer[i]);
 
 	payload[strlen(payload)]=0x00;
-	printf("strlen(payload) = %d\n",strlen(payload));
+//	printf("strlen(payload) = %d\n",strlen(payload));
 
 	strcpy(AUTH_REPLY.protocol, "\xe3myftp");
 	AUTH_REPLY.type = 0xA4;
